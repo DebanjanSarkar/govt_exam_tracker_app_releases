@@ -7,6 +7,9 @@ import '../../data/models/exam_model.dart';
 import '../../core/utils/lifecycle_engine.dart';
 import '../../providers/exam_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../providers/ai_cooldown_provider.dart';
+import '../../core/constants/app_constants.dart';
+import '../../core/services/live_update_service.dart';
 import 'exam_form_screen.dart';
 
 class ExamDetailScreen extends ConsumerStatefulWidget {
@@ -33,7 +36,6 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label copied to clipboard')));
   }
 
-  // RESTORED: The Delete Exam Function
   void _deleteExam() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -42,15 +44,10 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
         content: const Text('This will move the exam to the trash.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete')
-          ),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error), onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
         ],
       ),
     );
-
     if (confirm == true && mounted) {
       ref.read(examListProvider.notifier).deleteExam(widget.exam.id);
       Navigator.pop(context);
@@ -58,88 +55,114 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
   }
 
   void _updatePhaseState(ExamModel currentExam, String phaseKey, String newState) {
-    // Allows the user to click a stage node and instantly update its status without editing the whole form!
     final updatedPhases = Map<String, String>.from(currentExam.phaseStates);
     updatedPhases[phaseKey] = newState;
-
-    final updatedExam = currentExam.copyWith(phaseStates: updatedPhases);
-    ref.read(examListProvider.notifier).updateExam(updatedExam);
+    ref.read(examListProvider.notifier).updateExam(currentExam.copyWith(phaseStates: updatedPhases));
   }
 
-  // Beautiful Vertical Node Builder
-  Widget _buildTimelineNode(ExamModel currentExam, {
-    required String title,
-    required DateTime? date,
-    required String phaseKey,
-    required bool isLast,
-  }) {
+  void _checkLiveStatusAi(ExamModel exam, String phaseTitle) async {
+    final cooldownLeft = ref.read(aiCooldownProvider);
+    if (cooldownLeft > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('AI is cooling down. Please wait $cooldownLeft seconds.'), backgroundColor: Colors.orange));
+      return;
+    }
+
+    final prefs = ref.read(sharedPreferencesProvider);
+    final userKey = prefs.getString(AppConstants.prefsApiKey);
+    if (userKey == null || userKey.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your Groq API Key in settings first!'), backgroundColor: Colors.red));
+      return;
+    }
+
+    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Searching the web...')])))));
+
+    final result = await LiveUpdateService.getLiveStatus(exam.examName, phaseTitle, userKey);
+
+    ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
+
+    if (mounted) {
+      Navigator.pop(context);
+      showDialog(context: context, builder: (c) => AlertDialog(
+        title: Row(children: [const Icon(Icons.auto_awesome, color: Colors.purple), const SizedBox(width: 8), Expanded(child: Text('Live Update: $phaseTitle'))]),
+        content: Text(result, style: const TextStyle(fontSize: 15, height: 1.4)),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ));
+    }
+  }
+
+  Widget _buildTimelineNode(ExamModel currentExam, {required String title, required DateTime? date, required String phaseKey, required bool isLast, required bool isDisabled, required bool isActiveForAi}) {
     final theme = Theme.of(context);
     final String currentState = currentExam.phaseStates[phaseKey] ?? 'pending';
 
     Color nodeColor = Colors.grey.shade400;
     IconData nodeIcon = Icons.radio_button_unchecked;
 
+    // DYNAMIC COLOR AND ICON LOGIC
     if (currentState == 'cleared') {
-      nodeColor = AppTheme.successColor;
-      nodeIcon = Icons.check_circle;
+      nodeColor = AppTheme.successColor; nodeIcon = Icons.check_circle;
     } else if (currentState == 'failed') {
-      nodeColor = AppTheme.dangerColor;
-      nodeIcon = Icons.cancel;
+      nodeColor = AppTheme.dangerColor; nodeIcon = Icons.cancel;
+    } else if (currentState == 'missed') {
+      nodeColor = Colors.grey.shade700; nodeIcon = Icons.block;
+    } else if (currentState == 'exam_given') {
+      nodeColor = AppTheme.resultColor; nodeIcon = Icons.assignment_turned_in;
     } else if (currentState == 'admit_card') {
-      nodeColor = AppTheme.warningColor;
-      nodeIcon = Icons.downloading;
+      nodeColor = AppTheme.warningColor; nodeIcon = Icons.downloading;
     }
+
+    final double opacity = isDisabled ? 0.4 : 1.0;
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Left Line & Circle
-          Column(
-            children: [
-              Icon(nodeIcon, color: nodeColor, size: 24),
-              if (!isLast) Expanded(child: Container(width: 2, color: Colors.grey.shade300)),
-            ],
-          ),
+          Column(children: [Icon(nodeIcon, color: isDisabled ? Colors.grey : nodeColor, size: 24), if (!isLast) Expanded(child: Container(width: 2, color: Colors.grey.shade300))]),
           const SizedBox(width: 16),
-          // Right Content Card
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(bottom: 24.0),
-              child: Card(
-                elevation: 0,
-                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+              child: Opacity(
+                opacity: opacity,
+                child: Card(
+                  elevation: 0,
+                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 4),
-                            Text(_formatDate(date), style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text(_formatDate(date), style: TextStyle(color: Colors.grey.shade600, fontSize: 13))])),
+                            DropdownButton<String>(
+                              value: currentState,
+                              underline: const SizedBox(),
+                              icon: const Icon(Icons.arrow_drop_down, size: 20),
+                              style: TextStyle(color: isDisabled ? Colors.grey : nodeColor, fontWeight: FontWeight.bold, fontSize: 13),
+                              onChanged: isDisabled ? null : (val) { if (val != null) _updatePhaseState(currentExam, phaseKey, val); },
+                              items: const [
+                                DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                                DropdownMenuItem(value: 'admit_card', child: Text('Admit Card Out')),
+                                DropdownMenuItem(value: 'exam_given', child: Text('Exam Given / Attended')),
+                                DropdownMenuItem(value: 'cleared', child: Text('Cleared / Passed')),
+                                DropdownMenuItem(value: 'failed', child: Text('Failed')),
+                                DropdownMenuItem(value: 'missed', child: Text('Missed / Not Attended')),
+                              ],
+                            ),
                           ],
                         ),
-                      ),
-                      // Dropdown to instantly change phase status
-                      DropdownButton<String>(
-                        value: currentState,
-                        underline: const SizedBox(),
-                        icon: const Icon(Icons.arrow_drop_down, size: 20),
-                        style: TextStyle(color: nodeColor, fontWeight: FontWeight.bold, fontSize: 13),
-                        items: const [
-                          DropdownMenuItem(value: 'pending', child: Text('Pending')),
-                          DropdownMenuItem(value: 'admit_card', child: Text('Admit Card Out')),
-                          DropdownMenuItem(value: 'cleared', child: Text('Cleared / Passed')),
-                          DropdownMenuItem(value: 'failed', child: Text('Failed')),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) _updatePhaseState(currentExam, phaseKey, val);
-                        },
-                      ),
-                    ],
+                        if (isActiveForAi && !isDisabled)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12.0),
+                            child: FilledButton.tonalIcon(
+                              onPressed: () => _checkLiveStatusAi(currentExam, title),
+                              icon: const Icon(Icons.auto_awesome, color: Colors.purple, size: 16),
+                              label: const Text('Check Current Status', style: TextStyle(color: Colors.purple, fontSize: 12)),
+                              style: FilledButton.styleFrom(backgroundColor: Colors.purple.withOpacity(0.1), padding: const EdgeInsets.symmetric(horizontal: 12), visualDensity: VisualDensity.compact),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -148,6 +171,49 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildDynamicStepper(ExamModel currentExam) {
+    List<Map<String, dynamic>> stages = [
+      {'key': 'prelims', 'title': 'Prelims / CBT-1', 'date': currentExam.examDate}
+    ];
+    if (currentExam.hasMains) stages.add({'key': 'mains', 'title': 'Mains / CBT-2', 'date': currentExam.mainsExamDate});
+    if (currentExam.hasSkillTest) stages.add({'key': 'skill', 'title': 'Skill / Physical Test', 'date': currentExam.skillTestDate});
+    if (currentExam.hasInterview) stages.add({'key': 'interview', 'title': 'Interview', 'date': currentExam.interviewDate});
+    if (currentExam.hasDV) stages.add({'key': 'dv', 'title': 'Document Verification', 'date': currentExam.dvDate});
+    stages.add({'key': 'result', 'title': 'Final Result', 'date': currentExam.resultDate});
+
+    List<Widget> nodes = [];
+    bool isJourneyEnded = false;
+    bool foundActive = false;
+
+    for (int i = 0; i < stages.length; i++) {
+      final stage = stages[i];
+      final isLast = i == stages.length - 1;
+      final currentState = currentExam.phaseStates[stage['key']] ?? 'pending';
+
+      bool isActiveForAi = false;
+      // AI button is active if it's the current frontier stage (including when waiting for result)
+      if (!isJourneyEnded && !foundActive && (currentState == 'pending' || currentState == 'admit_card' || currentState == 'exam_given')) {
+        isActiveForAi = true;
+        foundActive = true;
+      }
+
+      nodes.add(_buildTimelineNode(
+        currentExam,
+        title: stage['title'],
+        date: stage['date'],
+        phaseKey: stage['key'],
+        isLast: isLast,
+        isDisabled: isJourneyEnded,
+        isActiveForAi: isActiveForAi,
+      ));
+
+      if (currentState == 'failed' || currentState == 'missed') {
+        isJourneyEnded = true;
+      }
+    }
+    return Column(children: nodes);
   }
 
   @override
@@ -170,7 +236,6 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           Text(currentExam.examName, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-
           if (currentExam.advertisementNo != null && currentExam.advertisementNo!.isNotEmpty)
             Padding(padding: const EdgeInsets.only(top: 4.0, bottom: 8.0), child: Text(currentExam.advertisementNo!, style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.bold))),
 
@@ -188,14 +253,9 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
           ),
 
           const Divider(height: 32),
-
-          // ==========================================
-          // DYNAMIC JOURNEY TIMELINE
-          // ==========================================
           const Text('Journey Tracker', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
           const SizedBox(height: 16),
 
-          // Application Registration Node (Fixed)
           IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -207,16 +267,7 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
             ),
           ),
 
-          // Dynamic Nodes based on Form Booleans
-          _buildTimelineNode(currentExam, title: 'Prelims / CBT-1', date: currentExam.examDate, phaseKey: 'prelims', isLast: !currentExam.hasMains && !currentExam.hasSkillTest && !currentExam.hasInterview && !currentExam.hasDV && currentExam.resultDate == null),
-          if (currentExam.hasMains) _buildTimelineNode(currentExam, title: 'Mains / CBT-2', date: currentExam.mainsExamDate, phaseKey: 'mains', isLast: !currentExam.hasSkillTest && !currentExam.hasInterview && !currentExam.hasDV && currentExam.resultDate == null),
-          if (currentExam.hasSkillTest) _buildTimelineNode(currentExam, title: 'Skill / Physical Test', date: currentExam.skillTestDate, phaseKey: 'skill', isLast: !currentExam.hasInterview && !currentExam.hasDV && currentExam.resultDate == null),
-          if (currentExam.hasInterview) _buildTimelineNode(currentExam, title: 'Interview', date: currentExam.interviewDate, phaseKey: 'interview', isLast: !currentExam.hasDV && currentExam.resultDate == null),
-          if (currentExam.hasDV) _buildTimelineNode(currentExam, title: 'Document Verification', date: currentExam.dvDate, phaseKey: 'dv', isLast: currentExam.resultDate == null),
-
-          // Final Result Node
-          if (currentExam.resultDate != null || currentExam.phaseStates.isNotEmpty)
-            _buildTimelineNode(currentExam, title: 'Final Result', date: currentExam.resultDate, phaseKey: 'result', isLast: true),
+          _buildDynamicStepper(currentExam),
 
           const Divider(height: 32),
           const Text('Credentials Vault', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),

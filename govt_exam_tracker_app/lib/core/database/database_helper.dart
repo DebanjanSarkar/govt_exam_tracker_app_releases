@@ -1,0 +1,79 @@
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+
+class DatabaseHelper {
+  static const String _databaseName = "govt_exam_tracker.db";
+  static const int _databaseVersion = 2;
+  static const String tableExams = "exams";
+
+  DatabaseHelper._privateConstructor();
+  static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
+
+  static Database? _database;
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDatabase();
+    return _database!;
+  }
+
+  Future<Database> _initDatabase() async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, _databaseName);
+
+    return await openDatabase(
+      path,
+      version: _databaseVersion,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+    );
+  }
+
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE $tableExams (
+        id TEXT PRIMARY KEY,
+        exam_name TEXT NOT NULL,
+        advertisement_no TEXT,
+        portal_url TEXT,
+        status TEXT NOT NULL,
+        application_start_date TEXT,
+        application_end_date TEXT,
+        username_type TEXT,
+        username TEXT,
+        password TEXT,
+        notes TEXT,
+        exam_date TEXT,
+        mains_exam_date TEXT,
+        result_date TEXT,
+        additional_info TEXT,
+        post_names TEXT,
+        notification_pdf_path TEXT,
+        reminder_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        is_deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_status ON $tableExams (status)');
+    await db.execute('CREATE INDEX idx_app_end ON $tableExams (application_end_date)');
+    await db.execute('CREATE INDEX idx_exam_date ON $tableExams (exam_date)');
+    await db.execute('CREATE INDEX idx_is_deleted ON $tableExams (is_deleted)');
+
+    // REMOVED: SeedData injection. New users will now start with a clean slate!
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN advertisement_no TEXT');
+    }
+  }
+
+  Future<void> close() async {
+    final db = _database;
+    if (db != null) {
+      await db.close();
+    }
+  }
+}

@@ -1,0 +1,70 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/sync_provider.dart';
+
+class MainDrawer extends ConsumerWidget {
+  const MainDrawer({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final syncState = ref.watch(syncProvider);
+    final theme = Theme.of(context);
+
+    // Listen to sync messages to show SnackBars
+    ref.listen<SyncState>(syncProvider, (previous, next) {
+      if (next.error != null && next.error != previous?.error) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(next.error!), backgroundColor: theme.colorScheme.error));
+      }
+      if (next.lastSyncMessage != null && next.lastSyncMessage != previous?.lastSyncMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(next.lastSyncMessage!), backgroundColor: theme.colorScheme.primary));
+      }
+    });
+
+    return Drawer(
+      child: Column(
+        children: [
+          UserAccountsDrawerHeader(
+            decoration: BoxDecoration(color: theme.colorScheme.primary),
+            accountName: Text(syncState.account?.displayName ?? 'Not logged in', style: const TextStyle(fontWeight: FontWeight.bold)),
+            accountEmail: Text(syncState.account?.email ?? 'Sync data across devices securely'),
+            currentAccountPicture: CircleAvatar(
+              backgroundColor: Colors.white,
+              backgroundImage: syncState.account?.photoUrl != null ? NetworkImage(syncState.account!.photoUrl!) : null,
+              child: syncState.account?.photoUrl == null ? Icon(Icons.person, size: 40, color: theme.colorScheme.primary) : null,
+            ),
+          ),
+
+          if (syncState.account == null) ...[
+            ListTile(
+              leading: const Icon(Icons.login),
+              title: const Text('Login with Google'),
+              subtitle: const Text('Enable Drive Sync'),
+              onTap: () => ref.read(syncProvider.notifier).login(),
+            ),
+          ] else ...[
+            ListTile(
+              leading: const Icon(Icons.cloud_upload),
+              title: const Text('Backup to Drive'),
+              subtitle: const Text('Save your local data'),
+              trailing: syncState.isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+              onTap: syncState.isLoading ? null : () => ref.read(syncProvider.notifier).pushToDrive(),
+            ),
+            ListTile(
+              leading: const Icon(Icons.cloud_download),
+              title: const Text('Sync from Drive'),
+              subtitle: const Text('Pull latest data'),
+              trailing: syncState.isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+              onTap: syncState.isLoading ? null : () => ref.read(syncProvider.notifier).pullFromDrive(),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('Logout', style: TextStyle(color: Colors.red)),
+              onTap: () => ref.read(syncProvider.notifier).logout(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}

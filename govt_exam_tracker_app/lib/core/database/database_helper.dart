@@ -3,12 +3,11 @@ import 'package:path/path.dart';
 
 class DatabaseHelper {
   static const String _databaseName = "govt_exam_tracker.db";
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 3; // BUMPED TO V3 FOR JOURNEY TIMELINE
   static const String tableExams = "exams";
 
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
-
   static Database? _database;
 
   Future<Database> get database async {
@@ -39,13 +38,21 @@ class DatabaseHelper {
         status TEXT NOT NULL,
         application_start_date TEXT,
         application_end_date TEXT,
+        has_mains INTEGER NOT NULL DEFAULT 0,
+        has_skill_test INTEGER NOT NULL DEFAULT 0,
+        has_interview INTEGER NOT NULL DEFAULT 0,
+        has_dv INTEGER NOT NULL DEFAULT 0,
+        exam_date TEXT,
+        mains_exam_date TEXT,
+        skill_test_date TEXT,
+        interview_date TEXT,
+        dv_date TEXT,
+        result_date TEXT,
+        phase_states TEXT,
         username_type TEXT,
         username TEXT,
         password TEXT,
         notes TEXT,
-        exam_date TEXT,
-        mains_exam_date TEXT,
-        result_date TEXT,
         additional_info TEXT,
         post_names TEXT,
         notification_pdf_path TEXT,
@@ -60,13 +67,22 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_app_end ON $tableExams (application_end_date)');
     await db.execute('CREATE INDEX idx_exam_date ON $tableExams (exam_date)');
     await db.execute('CREATE INDEX idx_is_deleted ON $tableExams (is_deleted)');
-
-    // REMOVED: SeedData injection. New users will now start with a clean slate!
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE $tableExams ADD COLUMN advertisement_no TEXT');
+    }
+    if (oldVersion < 3) {
+      // V3 Migration: Journey Timeline Columns
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN has_mains INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN has_skill_test INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN has_interview INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN has_dv INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN skill_test_date TEXT');
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN interview_date TEXT');
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN dv_date TEXT');
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN phase_states TEXT');
     }
   }
 

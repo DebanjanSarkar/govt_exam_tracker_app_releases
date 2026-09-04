@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/models/exam_model.dart';
 import '../../core/utils/lifecycle_engine.dart';
 import '../../providers/exam_provider.dart';
+import '../../core/theme/app_theme.dart';
 import 'exam_form_screen.dart';
 
 class ExamDetailScreen extends ConsumerStatefulWidget {
@@ -19,7 +20,7 @@ class ExamDetailScreen extends ConsumerStatefulWidget {
 class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
   bool _obscurePassword = true;
 
-  String _formatDate(DateTime? date) => date == null ? 'Not announced' : DateFormat('dd MMM yyyy').format(date);
+  String _formatDate(DateTime? date) => date == null ? 'Date TBA' : DateFormat('dd MMM yyyy').format(date);
 
   Future<void> _launchUrl(String urlString) async {
     if (!await launchUrl(Uri.parse(urlString), mode: LaunchMode.externalApplication)) {
@@ -32,6 +33,7 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label copied to clipboard')));
   }
 
+  // RESTORED: The Delete Exam Function
   void _deleteExam() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -40,7 +42,11 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
         content: const Text('This will move the exam to the trash.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error), onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete')
+          ),
         ],
       ),
     );
@@ -49,6 +55,99 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
       ref.read(examListProvider.notifier).deleteExam(widget.exam.id);
       Navigator.pop(context);
     }
+  }
+
+  void _updatePhaseState(ExamModel currentExam, String phaseKey, String newState) {
+    // Allows the user to click a stage node and instantly update its status without editing the whole form!
+    final updatedPhases = Map<String, String>.from(currentExam.phaseStates);
+    updatedPhases[phaseKey] = newState;
+
+    final updatedExam = currentExam.copyWith(phaseStates: updatedPhases);
+    ref.read(examListProvider.notifier).updateExam(updatedExam);
+  }
+
+  // Beautiful Vertical Node Builder
+  Widget _buildTimelineNode(ExamModel currentExam, {
+    required String title,
+    required DateTime? date,
+    required String phaseKey,
+    required bool isLast,
+  }) {
+    final theme = Theme.of(context);
+    final String currentState = currentExam.phaseStates[phaseKey] ?? 'pending';
+
+    Color nodeColor = Colors.grey.shade400;
+    IconData nodeIcon = Icons.radio_button_unchecked;
+
+    if (currentState == 'cleared') {
+      nodeColor = AppTheme.successColor;
+      nodeIcon = Icons.check_circle;
+    } else if (currentState == 'failed') {
+      nodeColor = AppTheme.dangerColor;
+      nodeIcon = Icons.cancel;
+    } else if (currentState == 'admit_card') {
+      nodeColor = AppTheme.warningColor;
+      nodeIcon = Icons.downloading;
+    }
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Left Line & Circle
+          Column(
+            children: [
+              Icon(nodeIcon, color: nodeColor, size: 24),
+              if (!isLast) Expanded(child: Container(width: 2, color: Colors.grey.shade300)),
+            ],
+          ),
+          const SizedBox(width: 16),
+          // Right Content Card
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 24.0),
+              child: Card(
+                elevation: 0,
+                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            const SizedBox(height: 4),
+                            Text(_formatDate(date), style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                      // Dropdown to instantly change phase status
+                      DropdownButton<String>(
+                        value: currentState,
+                        underline: const SizedBox(),
+                        icon: const Icon(Icons.arrow_drop_down, size: 20),
+                        style: TextStyle(color: nodeColor, fontWeight: FontWeight.bold, fontSize: 13),
+                        items: const [
+                          DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                          DropdownMenuItem(value: 'admit_card', child: Text('Admit Card Out')),
+                          DropdownMenuItem(value: 'cleared', child: Text('Cleared / Passed')),
+                          DropdownMenuItem(value: 'failed', child: Text('Failed')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) _updatePhaseState(currentExam, phaseKey, val);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -73,53 +172,53 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
           Text(currentExam.examName, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
 
           if (currentExam.advertisementNo != null && currentExam.advertisementNo!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
-              child: Text(currentExam.advertisementNo!, style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
-            ),
+            Padding(padding: const EdgeInsets.only(top: 4.0, bottom: 8.0), child: Text(currentExam.advertisementNo!, style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.bold))),
 
           const SizedBox(height: 12),
-
-          // FIXED: Used a full-width Wrap instead of Row to prevent Overflow on smaller devices
           SizedBox(
             width: double.infinity,
             child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8.0,
-              runSpacing: 8.0,
+              alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8.0, runSpacing: 8.0,
               children: [
-                Chip(
-                    avatar: Icon(badge.icon, size: 16, color: badge.color),
-                    label: Text(badge.text, style: TextStyle(color: badge.color, fontWeight: FontWeight.bold)),
-                    backgroundColor: badge.color.withOpacity(0.1),
-                    side: BorderSide(color: badge.color.withOpacity(0.5))
-                ),
+                Chip(avatar: Icon(badge.icon, size: 16, color: badge.color), label: Text(badge.text, style: TextStyle(color: badge.color, fontWeight: FontWeight.bold)), backgroundColor: badge.color.withOpacity(0.1), side: BorderSide(color: badge.color.withOpacity(0.5))),
                 if (currentExam.portalUrl != null && currentExam.portalUrl!.isNotEmpty)
-                  FilledButton.icon(
-                      onPressed: () => _launchUrl(currentExam.portalUrl!),
-                      icon: const Icon(Icons.open_in_browser, size: 18),
-                      label: const Text('Portal')
-                  ),
+                  FilledButton.icon(onPressed: () => _launchUrl(currentExam.portalUrl!), icon: const Icon(Icons.open_in_browser, size: 18), label: const Text('Portal')),
               ],
             ),
           ),
 
           const Divider(height: 32),
-          const Text('Timeline', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
-          const SizedBox(height: 8),
-          Card(
-            margin: EdgeInsets.zero,
-            child: Column(
+
+          // ==========================================
+          // DYNAMIC JOURNEY TIMELINE
+          // ==========================================
+          const Text('Journey Tracker', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
+          const SizedBox(height: 16),
+
+          // Application Registration Node (Fixed)
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ListTile(leading: const Icon(Icons.app_registration), title: const Text('Application Deadline'), subtitle: Text(_formatDate(currentExam.applicationEndDate))),
-                ListTile(leading: const Icon(Icons.event), title: const Text('Prelims Exam Date'), subtitle: Text(_formatDate(currentExam.examDate))),
-                if (currentExam.mainsExamDate != null) ListTile(leading: const Icon(Icons.event_available), title: const Text('Mains Exam Date'), subtitle: Text(_formatDate(currentExam.mainsExamDate))),
-                if (currentExam.resultDate != null) ListTile(leading: const Icon(Icons.emoji_events), title: const Text('Result Date'), subtitle: Text(_formatDate(currentExam.resultDate))),
+                Column(children: [const Icon(Icons.app_registration, color: Colors.blue, size: 24), Expanded(child: Container(width: 2, color: Colors.grey.shade300))]),
+                const SizedBox(width: 16),
+                Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 24.0), child: Card(elevation: 0, color: Colors.blue.withOpacity(0.1), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Application Window', style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text('${_formatDate(currentExam.applicationStartDate)} to ${_formatDate(currentExam.applicationEndDate)}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13))]))))),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+
+          // Dynamic Nodes based on Form Booleans
+          _buildTimelineNode(currentExam, title: 'Prelims / CBT-1', date: currentExam.examDate, phaseKey: 'prelims', isLast: !currentExam.hasMains && !currentExam.hasSkillTest && !currentExam.hasInterview && !currentExam.hasDV && currentExam.resultDate == null),
+          if (currentExam.hasMains) _buildTimelineNode(currentExam, title: 'Mains / CBT-2', date: currentExam.mainsExamDate, phaseKey: 'mains', isLast: !currentExam.hasSkillTest && !currentExam.hasInterview && !currentExam.hasDV && currentExam.resultDate == null),
+          if (currentExam.hasSkillTest) _buildTimelineNode(currentExam, title: 'Skill / Physical Test', date: currentExam.skillTestDate, phaseKey: 'skill', isLast: !currentExam.hasInterview && !currentExam.hasDV && currentExam.resultDate == null),
+          if (currentExam.hasInterview) _buildTimelineNode(currentExam, title: 'Interview', date: currentExam.interviewDate, phaseKey: 'interview', isLast: !currentExam.hasDV && currentExam.resultDate == null),
+          if (currentExam.hasDV) _buildTimelineNode(currentExam, title: 'Document Verification', date: currentExam.dvDate, phaseKey: 'dv', isLast: currentExam.resultDate == null),
+
+          // Final Result Node
+          if (currentExam.resultDate != null || currentExam.phaseStates.isNotEmpty)
+            _buildTimelineNode(currentExam, title: 'Final Result', date: currentExam.resultDate, phaseKey: 'result', isLast: true),
+
+          const Divider(height: 32),
           const Text('Credentials Vault', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
           const SizedBox(height: 8),
           Card(
@@ -155,10 +254,6 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
           if (currentExam.notes != null && currentExam.notes!.isNotEmpty) ...[
             const Text('Notes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)), const SizedBox(height: 8),
             Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Text(currentExam.notes!)), const SizedBox(height: 24),
-          ],
-          if (currentExam.additionalInfo != null && currentExam.additionalInfo!.isNotEmpty) ...[
-            const Text('Additional Info', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)), const SizedBox(height: 8),
-            Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Text(currentExam.additionalInfo!)), const SizedBox(height: 24),
           ],
         ],
       ),

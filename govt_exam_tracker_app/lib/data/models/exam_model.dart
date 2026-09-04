@@ -6,18 +6,35 @@ export 'exam_status.dart';
 class ExamModel {
   final String id;
   final String examName;
-  final String? advertisementNo; // NEW FIELD
+  final String? advertisementNo;
   final String? portalUrl;
   final ApplicationStatus status;
+
+  // Registration
   final DateTime? applicationStartDate;
   final DateTime? applicationEndDate;
+
+  // Dynamic Exam Stages (Booleans)
+  final bool hasMains;
+  final bool hasSkillTest; // Typing/Physical/Psycho
+  final bool hasInterview;
+  final bool hasDV; // Document Verification
+
+  // Stage Dates
+  final DateTime? examDate; // Prelims / Tier 1
+  final DateTime? mainsExamDate;
+  final DateTime? skillTestDate;
+  final DateTime? interviewDate;
+  final DateTime? dvDate;
+  final DateTime? resultDate;
+
+  // Phase Tracker: Stores statuses like {"prelims": "cleared", "mains": "admit_card"}
+  final Map<String, String> phaseStates;
+
   final String? usernameType;
   final String? username;
   final String? password;
   final String? notes;
-  final DateTime? examDate;
-  final DateTime? mainsExamDate;
-  final DateTime? resultDate;
   final String? additionalInfo;
   final List<String> postNames;
   final String? notificationPdfPath;
@@ -34,13 +51,21 @@ class ExamModel {
     this.status = ApplicationStatus.notApplied,
     this.applicationStartDate,
     this.applicationEndDate,
+    this.hasMains = false,
+    this.hasSkillTest = false,
+    this.hasInterview = false,
+    this.hasDV = false,
+    this.examDate,
+    this.mainsExamDate,
+    this.skillTestDate,
+    this.interviewDate,
+    this.dvDate,
+    this.resultDate,
+    Map<String, String>? phaseStates,
     this.usernameType,
     this.username,
     this.password,
     this.notes,
-    this.examDate,
-    this.mainsExamDate,
-    this.resultDate,
     this.additionalInfo,
     List<String>? postNames,
     this.notificationPdfPath,
@@ -49,6 +74,7 @@ class ExamModel {
     DateTime? updatedAt,
     this.isDeleted = false,
   })  : id = id ?? const Uuid().v4(),
+        phaseStates = phaseStates ?? {},
         postNames = postNames ?? [],
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
@@ -61,13 +87,21 @@ class ExamModel {
     ApplicationStatus? status,
     DateTime? applicationStartDate,
     DateTime? applicationEndDate,
+    bool? hasMains,
+    bool? hasSkillTest,
+    bool? hasInterview,
+    bool? hasDV,
+    DateTime? examDate,
+    DateTime? mainsExamDate,
+    DateTime? skillTestDate,
+    DateTime? interviewDate,
+    DateTime? dvDate,
+    DateTime? resultDate,
+    Map<String, String>? phaseStates,
     String? usernameType,
     String? username,
     String? password,
     String? notes,
-    DateTime? examDate,
-    DateTime? mainsExamDate,
-    DateTime? resultDate,
     String? additionalInfo,
     List<String>? postNames,
     String? notificationPdfPath,
@@ -84,13 +118,21 @@ class ExamModel {
       status: status ?? this.status,
       applicationStartDate: applicationStartDate ?? this.applicationStartDate,
       applicationEndDate: applicationEndDate ?? this.applicationEndDate,
+      hasMains: hasMains ?? this.hasMains,
+      hasSkillTest: hasSkillTest ?? this.hasSkillTest,
+      hasInterview: hasInterview ?? this.hasInterview,
+      hasDV: hasDV ?? this.hasDV,
+      examDate: examDate ?? this.examDate,
+      mainsExamDate: mainsExamDate ?? this.mainsExamDate,
+      skillTestDate: skillTestDate ?? this.skillTestDate,
+      interviewDate: interviewDate ?? this.interviewDate,
+      dvDate: dvDate ?? this.dvDate,
+      resultDate: resultDate ?? this.resultDate,
+      phaseStates: phaseStates ?? this.phaseStates,
       usernameType: usernameType ?? this.usernameType,
       username: username ?? this.username,
       password: password ?? this.password,
       notes: notes ?? this.notes,
-      examDate: examDate ?? this.examDate,
-      mainsExamDate: mainsExamDate ?? this.mainsExamDate,
-      resultDate: resultDate ?? this.resultDate,
       additionalInfo: additionalInfo ?? this.additionalInfo,
       postNames: postNames ?? this.postNames,
       notificationPdfPath: notificationPdfPath ?? this.notificationPdfPath,
@@ -110,13 +152,21 @@ class ExamModel {
       'status': status.name,
       'application_start_date': applicationStartDate?.toIso8601String(),
       'application_end_date': applicationEndDate?.toIso8601String(),
+      'has_mains': hasMains ? 1 : 0,
+      'has_skill_test': hasSkillTest ? 1 : 0,
+      'has_interview': hasInterview ? 1 : 0,
+      'has_dv': hasDV ? 1 : 0,
+      'exam_date': examDate?.toIso8601String(),
+      'mains_exam_date': mainsExamDate?.toIso8601String(),
+      'skill_test_date': skillTestDate?.toIso8601String(),
+      'interview_date': interviewDate?.toIso8601String(),
+      'dv_date': dvDate?.toIso8601String(),
+      'result_date': resultDate?.toIso8601String(),
+      'phase_states': jsonEncode(phaseStates),
       'username_type': usernameType,
       'username': username,
       'password': password,
       'notes': notes,
-      'exam_date': examDate?.toIso8601String(),
-      'mains_exam_date': mainsExamDate?.toIso8601String(),
-      'result_date': resultDate?.toIso8601String(),
       'additional_info': additionalInfo,
       'post_names': jsonEncode(postNames),
       'notification_pdf_path': notificationPdfPath,
@@ -128,12 +178,9 @@ class ExamModel {
   }
 
   factory ExamModel.fromMap(Map<String, dynamic> map) {
-    List<String> parsedPosts = [];
-    if (map['post_names'] != null && map['post_names'].toString().isNotEmpty) {
-      try {
-        final decoded = jsonDecode(map['post_names']);
-        if (decoded is List) parsedPosts = decoded.map((e) => e.toString()).toList();
-      } catch (_) {}
+    Map<String, String> parsedPhases = {};
+    if (map['phase_states'] != null) {
+      try { parsedPhases = Map<String, String>.from(jsonDecode(map['phase_states'])); } catch (_) {}
     }
 
     return ExamModel(
@@ -141,22 +188,29 @@ class ExamModel {
       examName: map['exam_name'] as String,
       advertisementNo: map['advertisement_no'] as String?,
       portalUrl: map['portal_url'] as String?,
-      status: ApplicationStatus.values.firstWhere(
-            (e) => e.name == map['status'],
-        orElse: () => ApplicationStatus.notApplied,
-      ),
+      status: ApplicationStatus.values.firstWhere((e) => e.name == map['status'], orElse: () => ApplicationStatus.notApplied),
       applicationStartDate: map['application_start_date'] != null ? DateTime.tryParse(map['application_start_date']) : null,
       applicationEndDate: map['application_end_date'] != null ? DateTime.tryParse(map['application_end_date']) : null,
+
+      // Backward compatibility logic: If old records had a Mains Date, automatically enable the hasMains flag!
+      hasMains: map['has_mains'] == 1 || map['mains_exam_date'] != null,
+      hasSkillTest: map['has_skill_test'] == 1,
+      hasInterview: map['has_interview'] == 1,
+      hasDV: map['has_dv'] == 1,
+
+      examDate: map['exam_date'] != null ? DateTime.tryParse(map['exam_date']) : null,
+      mainsExamDate: map['mains_exam_date'] != null ? DateTime.tryParse(map['mains_exam_date']) : null,
+      skillTestDate: map['skill_test_date'] != null ? DateTime.tryParse(map['skill_test_date']) : null,
+      interviewDate: map['interview_date'] != null ? DateTime.tryParse(map['interview_date']) : null,
+      dvDate: map['dv_date'] != null ? DateTime.tryParse(map['dv_date']) : null,
+      resultDate: map['result_date'] != null ? DateTime.tryParse(map['result_date']) : null,
+      phaseStates: parsedPhases,
+
       usernameType: map['username_type'] as String?,
       username: map['username'] as String?,
       password: map['password'] as String?,
       notes: map['notes'] as String?,
-      examDate: map['exam_date'] != null ? DateTime.tryParse(map['exam_date']) : null,
-      mainsExamDate: map['mains_exam_date'] != null ? DateTime.tryParse(map['mains_exam_date']) : null,
-      resultDate: map['result_date'] != null ? DateTime.tryParse(map['result_date']) : null,
       additionalInfo: map['additional_info'] as String?,
-      postNames: parsedPosts,
-      notificationPdfPath: map['notification_pdf_path'] as String?,
       reminderEnabled: (map['reminder_enabled'] as int? ?? 1) == 1,
       createdAt: map['created_at'] != null ? DateTime.parse(map['created_at']) : DateTime.now(),
       updatedAt: map['updated_at'] != null ? DateTime.parse(map['updated_at']) : DateTime.now(),

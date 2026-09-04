@@ -14,22 +14,28 @@ class ExamModel {
   final DateTime? applicationStartDate;
   final DateTime? applicationEndDate;
 
-  // Dynamic Exam Stages (Booleans)
+  // Dynamic Exam Stages
   final bool hasMains;
-  final bool hasSkillTest; // Typing/Physical/Psycho
+  final bool hasSkillTest;
   final bool hasInterview;
-  final bool hasDV; // Document Verification
+  final bool hasDV;
 
   // Stage Dates
-  final DateTime? examDate; // Prelims / Tier 1
+  final DateTime? examDate;
   final DateTime? mainsExamDate;
   final DateTime? skillTestDate;
   final DateTime? interviewDate;
   final DateTime? dvDate;
   final DateTime? resultDate;
 
-  // Phase Tracker: Stores statuses like {"prelims": "cleared", "mains": "admit_card"}
+  // Phase Tracker
   final Map<String, String> phaseStates;
+
+  // NEW: Exam Pattern & Syllabus Storage
+  // Stores structures like: {"prelims": {"duration": "60 mins", "sections": [{"subject": "Math", "marks": 30, "questions": 30}]}}
+  final Map<String, dynamic> examPatternData;
+  // Stores structures like: {"prelims": {"Math": {"topics": [{"name": "Algebra", "completed": false}]}}}
+  final Map<String, dynamic> syllabusData;
 
   final String? usernameType;
   final String? username;
@@ -62,6 +68,8 @@ class ExamModel {
     this.dvDate,
     this.resultDate,
     Map<String, String>? phaseStates,
+    Map<String, dynamic>? examPatternData,
+    Map<String, dynamic>? syllabusData,
     this.usernameType,
     this.username,
     this.password,
@@ -75,6 +83,8 @@ class ExamModel {
     this.isDeleted = false,
   })  : id = id ?? const Uuid().v4(),
         phaseStates = phaseStates ?? {},
+        examPatternData = examPatternData ?? {},
+        syllabusData = syllabusData ?? {},
         postNames = postNames ?? [],
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
@@ -98,6 +108,8 @@ class ExamModel {
     DateTime? dvDate,
     DateTime? resultDate,
     Map<String, String>? phaseStates,
+    Map<String, dynamic>? examPatternData,
+    Map<String, dynamic>? syllabusData,
     String? usernameType,
     String? username,
     String? password,
@@ -129,6 +141,8 @@ class ExamModel {
       dvDate: dvDate ?? this.dvDate,
       resultDate: resultDate ?? this.resultDate,
       phaseStates: phaseStates ?? this.phaseStates,
+      examPatternData: examPatternData ?? this.examPatternData,
+      syllabusData: syllabusData ?? this.syllabusData,
       usernameType: usernameType ?? this.usernameType,
       username: username ?? this.username,
       password: password ?? this.password,
@@ -163,6 +177,8 @@ class ExamModel {
       'dv_date': dvDate?.toIso8601String(),
       'result_date': resultDate?.toIso8601String(),
       'phase_states': jsonEncode(phaseStates),
+      'exam_pattern_data': jsonEncode(examPatternData),
+      'syllabus_data': jsonEncode(syllabusData),
       'username_type': usernameType,
       'username': username,
       'password': password,
@@ -179,8 +195,17 @@ class ExamModel {
 
   factory ExamModel.fromMap(Map<String, dynamic> map) {
     Map<String, String> parsedPhases = {};
+    Map<String, dynamic> parsedPattern = {};
+    Map<String, dynamic> parsedSyllabus = {};
+
     if (map['phase_states'] != null) {
       try { parsedPhases = Map<String, String>.from(jsonDecode(map['phase_states'])); } catch (_) {}
+    }
+    if (map['exam_pattern_data'] != null) {
+      try { parsedPattern = Map<String, dynamic>.from(jsonDecode(map['exam_pattern_data'])); } catch (_) {}
+    }
+    if (map['syllabus_data'] != null) {
+      try { parsedSyllabus = Map<String, dynamic>.from(jsonDecode(map['syllabus_data'])); } catch (_) {}
     }
 
     return ExamModel(
@@ -192,7 +217,6 @@ class ExamModel {
       applicationStartDate: map['application_start_date'] != null ? DateTime.tryParse(map['application_start_date']) : null,
       applicationEndDate: map['application_end_date'] != null ? DateTime.tryParse(map['application_end_date']) : null,
 
-      // Backward compatibility logic: If old records had a Mains Date, automatically enable the hasMains flag!
       hasMains: map['has_mains'] == 1 || map['mains_exam_date'] != null,
       hasSkillTest: map['has_skill_test'] == 1,
       hasInterview: map['has_interview'] == 1,
@@ -204,7 +228,10 @@ class ExamModel {
       interviewDate: map['interview_date'] != null ? DateTime.tryParse(map['interview_date']) : null,
       dvDate: map['dv_date'] != null ? DateTime.tryParse(map['dv_date']) : null,
       resultDate: map['result_date'] != null ? DateTime.tryParse(map['result_date']) : null,
+
       phaseStates: parsedPhases,
+      examPatternData: parsedPattern,
+      syllabusData: parsedSyllabus,
 
       usernameType: map['username_type'] as String?,
       username: map['username'] as String?,

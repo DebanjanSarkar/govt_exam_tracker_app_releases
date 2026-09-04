@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../data/models/exam_model.dart';
 import '../../core/utils/lifecycle_engine.dart';
 import '../../providers/exam_provider.dart';
@@ -10,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../providers/ai_cooldown_provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_update_service.dart';
+import '../../core/services/syllabus_parser_service.dart'; // NEW IMPORT
 import 'exam_form_screen.dart';
 
 class ExamDetailScreen extends ConsumerStatefulWidget {
@@ -22,6 +25,7 @@ class ExamDetailScreen extends ConsumerStatefulWidget {
 
 class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
   bool _obscurePassword = true;
+  bool _isGeneratingSyllabus = false; // STATE FOR SYLLABUS GENERATION
 
   String _formatDate(DateTime? date) => date == null ? 'Date TBA' : DateFormat('dd MMM yyyy').format(date);
 
@@ -90,6 +94,52 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
     }
   }
 
+  // ==========================================
+  // SYLLABUS GENERATION LOGIC
+  // ==========================================
+  void _generateSyllabusAi(ExamModel exam) async {
+    final cooldownLeft = ref.read(aiCooldownProvider);
+    if (cooldownLeft > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('AI is cooling down. Please wait $cooldownLeft seconds.'), backgroundColor: Colors.orange));
+      return;
+    }
+
+    final prefs = ref.read(sharedPreferencesProvider);
+    final userKey = prefs.getString(AppConstants.prefsApiKey);
+    if (userKey == null || userKey.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your Groq API Key in settings first!'), backgroundColor: Colors.red));
+      return;
+    }
+
+    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
+    if (result != null && result.files.single.path != null) {
+      setState(() => _isGeneratingSyllabus = true);
+
+      try {
+        final extractedData = await SyllabusParserService.generateSyllabusAndPattern(File(result.files.single.path!), exam.examName, userKey);
+
+        if (extractedData != null) {
+          final updatedExam = exam.copyWith(
+            examPatternData: extractedData['examPatternData'],
+            syllabusData: extractedData['syllabusData'],
+          );
+          ref.read(examListProvider.notifier).updateExam(updatedExam);
+
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✨ Syllabus & Pattern Successfully Extracted!'), backgroundColor: Colors.green));
+        }
+        ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
+      } catch (e) {
+        String errorMsg = e.toString();
+        if (errorMsg.contains('RATE_LIMIT')) errorMsg = 'Too many requests. Please wait for the cooldown.';
+        else if (errorMsg.contains('TIMEOUT')) errorMsg = 'The AI took too long. Please try again.';
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: Colors.red));
+        ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
+      } finally {
+        if (mounted) setState(() => _isGeneratingSyllabus = false);
+      }
+    }
+  }
+
   Widget _buildTimelineNode(ExamModel currentExam, {required String title, required DateTime? date, required String phaseKey, required bool isLast, required bool isDisabled, required bool isActiveForAi}) {
     final theme = Theme.of(context);
     final String currentState = currentExam.phaseStates[phaseKey] ?? 'pending';
@@ -97,7 +147,6 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
     Color nodeColor = Colors.grey.shade400;
     IconData nodeIcon = Icons.radio_button_unchecked;
 
-    // DYNAMIC COLOR AND ICON LOGIC
     if (currentState == 'cleared') {
       nodeColor = AppTheme.successColor; nodeIcon = Icons.check_circle;
     } else if (currentState == 'failed') {
@@ -193,7 +242,6 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
       final currentState = currentExam.phaseStates[stage['key']] ?? 'pending';
 
       bool isActiveForAi = false;
-      // AI button is active if it's the current frontier stage (including when waiting for result)
       if (!isJourneyEnded && !foundActive && (currentState == 'pending' || currentState == 'admit_card' || currentState == 'exam_given')) {
         isActiveForAi = true;
         foundActive = true;
@@ -301,11 +349,73 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
               ),
             ),
           ),
+
           const SizedBox(height: 24),
           if (currentExam.notes != null && currentExam.notes!.isNotEmpty) ...[
             const Text('Notes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)), const SizedBox(height: 8),
             Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Text(currentExam.notes!)), const SizedBox(height: 24),
           ],
+
+          // ==========================================
+          // PREPARATION & SYLLABUS SECTION
+          // ==========================================
+          const Divider(height: 32),
+          const Text('Preparation Tracker', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
+          const SizedBox(height: 16),
+
+          if (currentExam.syllabusData.isEmpty && currentExam.examPatternData.isEmpty)
+            Card(
+              elevation: 0,
+              color: Colors.purple.withOpacity(0.05),
+              shape: RoundedRectangleBorder(side: BorderSide(color: Colors.purple.withOpacity(0.3)), borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  children: [
+                    const Icon(Icons.menu_book, color: Colors.purple, size: 40),
+                    const SizedBox(height: 12),
+                    const Text('No Syllabus Found', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    const SizedBox(height: 8),
+                    const Text('Upload the notification PDF and let AI generate your exam pattern and chapter-wise study checklist.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _isGeneratingSyllabus ? null : () => _generateSyllabusAi(currentExam),
+                        icon: _isGeneratingSyllabus ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.auto_awesome),
+                        label: Text(_isGeneratingSyllabus ? 'AI is reading PDF & Web...' : 'Generate Syllabus & Pattern'),
+                        style: FilledButton.styleFrom(backgroundColor: Colors.purple),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Card(
+              color: AppTheme.successColor.withOpacity(0.1),
+              elevation: 0,
+              child: const Padding(
+                padding: EdgeInsets.all(20.0),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle, color: AppTheme.successColor, size: 32),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Syllabus is Generated!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text('Interactive UI is coming in Batch 12.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                        ],
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            ),
+
+          const SizedBox(height: 40),
         ],
       ),
     );

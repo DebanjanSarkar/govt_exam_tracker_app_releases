@@ -3,7 +3,8 @@ import 'package:path/path.dart';
 
 class DatabaseHelper {
   static const String _databaseName = "govt_exam_tracker.db";
-  static const int _databaseVersion = 3; // BUMPED TO V3 FOR JOURNEY TIMELINE
+  // BUMPED TO V4 FOR SYLLABUS & EXAM PATTERN JSON STORAGE
+  static const int _databaseVersion = 4;
   static const String tableExams = "exams";
 
   DatabaseHelper._privateConstructor();
@@ -49,6 +50,8 @@ class DatabaseHelper {
         dv_date TEXT,
         result_date TEXT,
         phase_states TEXT,
+        exam_pattern_data TEXT,
+        syllabus_data TEXT,
         username_type TEXT,
         username TEXT,
         password TEXT,
@@ -74,7 +77,6 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE $tableExams ADD COLUMN advertisement_no TEXT');
     }
     if (oldVersion < 3) {
-      // V3 Migration: Journey Timeline Columns
       await db.execute('ALTER TABLE $tableExams ADD COLUMN has_mains INTEGER NOT NULL DEFAULT 0');
       await db.execute('ALTER TABLE $tableExams ADD COLUMN has_skill_test INTEGER NOT NULL DEFAULT 0');
       await db.execute('ALTER TABLE $tableExams ADD COLUMN has_interview INTEGER NOT NULL DEFAULT 0');
@@ -83,6 +85,11 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE $tableExams ADD COLUMN interview_date TEXT');
       await db.execute('ALTER TABLE $tableExams ADD COLUMN dv_date TEXT');
       await db.execute('ALTER TABLE $tableExams ADD COLUMN phase_states TEXT');
+    }
+    if (oldVersion < 4) {
+      // V4 Migration: Storage for AI-generated Syllabus & Patterns
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN exam_pattern_data TEXT');
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN syllabus_data TEXT');
     }
   }
 

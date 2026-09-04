@@ -35,9 +35,8 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
   ApplicationStatus _status = ApplicationStatus.notApplied;
   DateTime? _appStartDate;
   DateTime? _appEndDate;
-  DateTime? _examDate; // Prelims
+  DateTime? _examDate;
 
-  // Dynamic Stages
   bool _hasMains = false;
   bool _hasSkillTest = false;
   bool _hasInterview = false;
@@ -115,7 +114,6 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
             if (extractedData['appEndDate'] != null) _appEndDate = DateTime.tryParse(extractedData['appEndDate']);
             if (extractedData['examDate'] != null) _examDate = DateTime.tryParse(extractedData['examDate']);
 
-            // Map the Booleans!
             if (extractedData['hasMains'] != null) _hasMains = extractedData['hasMains'];
             if (extractedData['hasSkillTest'] != null) _hasSkillTest = extractedData['hasSkillTest'];
             if (extractedData['hasInterview'] != null) _hasInterview = extractedData['hasInterview'];
@@ -162,7 +160,10 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
       interviewDate: _interviewDate,
       dvDate: _dvDate,
       resultDate: _resultDate,
-      phaseStates: widget.examToEdit?.phaseStates ?? {}, // Preserve existing progress!
+      phaseStates: widget.examToEdit?.phaseStates ?? {},
+      // CRITICAL: Ensure we do not wipe out pattern/syllabus data when updating the form
+      examPatternData: widget.examToEdit?.examPatternData ?? {},
+      syllabusData: widget.examToEdit?.syllabusData ?? {},
       usernameType: _userTypeCtrl.text.trim(),
       username: _usernameCtrl.text.trim(),
       password: _passwordCtrl.text.trim(),
@@ -229,7 +230,6 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
                 TextFormField(controller: _urlCtrl, decoration: const InputDecoration(labelText: 'Portal URL', border: OutlineInputBorder()), keyboardType: TextInputType.url),
                 const Divider(height: 32),
 
-                // NEW: Dynamic Stages Configuration
                 const Text('Exam Stages', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                 Text('Toggle the phases that apply to this specific exam.', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                 const SizedBox(height: 8),
@@ -283,7 +283,6 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
             ),
           ),
 
-          // Sticky Bottom Save Button
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(

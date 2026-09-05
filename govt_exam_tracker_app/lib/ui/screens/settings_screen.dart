@@ -36,22 +36,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: [
           const Icon(Icons.smart_toy, size: 64, color: Colors.purple),
           const SizedBox(height: 16),
-          const Text('Enable AI Auto-Fill', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const Text('Enable AI Auto-Fill & RAG', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          const Text('To keep this app 100% free and private, you need to provide your own free Groq API Key.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+          const Text('To keep this app 100% free, provide your own Free API Key. The app supports both Groq and Google Gemini!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
           const SizedBox(height: 32),
 
-          FilledButton.tonalIcon(
-            onPressed: () => launchUrl(Uri.parse('https://console.groq.com/keys'), mode: LaunchMode.externalApplication),
-            icon: const Icon(Icons.open_in_new),
-            label: const Text('Get Free API Key here'),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: () => launchUrl(Uri.parse('https://aistudio.google.com/app/apikey'), mode: LaunchMode.externalApplication),
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text('Get Gemini Key', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: () => launchUrl(Uri.parse('https://console.groq.com/keys'), mode: LaunchMode.externalApplication),
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text('Get Groq Key', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 24),
 
+          const SizedBox(height: 24),
           TextField(
             controller: _keyCtrl,
             decoration: const InputDecoration(
-              labelText: 'Paste your API Key (gsk_...)',
+              labelText: 'Paste your API Key (AIza... or gsk_...)',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.key),
             ),

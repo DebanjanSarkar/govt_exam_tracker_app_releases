@@ -25,6 +25,7 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
 
   late TextEditingController _nameCtrl;
   late TextEditingController _advNoCtrl;
+  late TextEditingController _targetPostCtrl; // NEW FIELD
   late TextEditingController _urlCtrl;
   late TextEditingController _userTypeCtrl;
   late TextEditingController _usernameCtrl;
@@ -54,6 +55,7 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
     final e = widget.examToEdit;
     _nameCtrl = TextEditingController(text: e?.examName ?? '');
     _advNoCtrl = TextEditingController(text: e?.advertisementNo ?? '');
+    _targetPostCtrl = TextEditingController(text: e?.targetPost ?? ''); // INIT
     _urlCtrl = TextEditingController(text: e?.portalUrl ?? '');
     _userTypeCtrl = TextEditingController(text: e?.usernameType ?? 'Registration No');
     _usernameCtrl = TextEditingController(text: e?.username ?? '');
@@ -80,7 +82,7 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
 
   @override
   void dispose() {
-    _nameCtrl.dispose(); _advNoCtrl.dispose(); _urlCtrl.dispose();
+    _nameCtrl.dispose(); _advNoCtrl.dispose(); _targetPostCtrl.dispose(); _urlCtrl.dispose();
     _userTypeCtrl.dispose(); _usernameCtrl.dispose(); _passwordCtrl.dispose();
     _notesCtrl.dispose(); _infoCtrl.dispose();
     super.dispose();
@@ -92,9 +94,8 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
 
     final prefs = ref.read(sharedPreferencesProvider);
     final userKey = prefs.getString(AppConstants.prefsApiKey);
-
     if (userKey == null || userKey.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please add your free Groq API Key in "AI Settings" first!'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your Groq API Key in settings first!'), backgroundColor: Colors.red));
       return;
     }
 
@@ -124,8 +125,8 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
         ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
       } catch (e) {
         String errorMsg = e.toString();
-        if (errorMsg.contains('RATE_LIMIT')) errorMsg = 'Too many requests. Please wait for the cooldown.';
-        else if (errorMsg.contains('TIMEOUT')) errorMsg = 'The AI took too long. Please try again.';
+        if (errorMsg.contains('RATE_LIMIT')) errorMsg = 'Too many requests. Please wait.';
+        else if (errorMsg.contains('TIMEOUT')) errorMsg = 'The AI took too long.';
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: Colors.red));
         ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
       } finally {
@@ -146,6 +147,7 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
       id: widget.examToEdit?.id,
       examName: _nameCtrl.text.trim(),
       advertisementNo: _advNoCtrl.text.trim(),
+      targetPost: _targetPostCtrl.text.trim(), // SAVED TO DB
       portalUrl: _urlCtrl.text.trim(),
       status: _status,
       applicationStartDate: _appStartDate,
@@ -161,7 +163,6 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
       dvDate: _dvDate,
       resultDate: _resultDate,
       phaseStates: widget.examToEdit?.phaseStates ?? {},
-      // CRITICAL: Ensure we do not wipe out pattern/syllabus data when updating the form
       examPatternData: widget.examToEdit?.examPatternData ?? {},
       syllabusData: widget.examToEdit?.syllabusData ?? {},
       usernameType: _userTypeCtrl.text.trim(),
@@ -223,6 +224,14 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
                 const SizedBox(height: 8),
                 TextFormField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Exam Name *', border: OutlineInputBorder()), validator: (v) => v == null || v.isEmpty ? 'Required' : null),
                 const SizedBox(height: 16),
+
+                // NEW: TARGET POST FIELD
+                TextFormField(
+                  controller: _targetPostCtrl,
+                  decoration: const InputDecoration(labelText: 'Post/Discipline Applied For (Optional)', border: OutlineInputBorder(), hintText: 'e.g. IT Officer Scale-I, TGT Hindi'),
+                ),
+
+                const SizedBox(height: 16),
                 TextFormField(controller: _advNoCtrl, decoration: const InputDecoration(labelText: 'Advertisement No.', border: OutlineInputBorder(), hintText: 'e.g. Advt. 03/2026')),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<ApplicationStatus>(value: _status, decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()), items: ApplicationStatus.values.map((s) => DropdownMenuItem(value: s, child: Text(s.displayName))).toList(), onChanged: (val) => setState(() => _status = val!)),
@@ -233,38 +242,16 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
                 const Text('Exam Stages', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                 Text('Toggle the phases that apply to this specific exam.', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(child: _buildStageToggle('Mains / CBT-2', _hasMains, (v) => _hasMains = v)),
-                    Expanded(child: _buildStageToggle('Skill / Physical', _hasSkillTest, (v) => _hasSkillTest = v)),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Expanded(child: _buildStageToggle('Interview', _hasInterview, (v) => _hasInterview = v)),
-                    Expanded(child: _buildStageToggle('Doc Verification', _hasDV, (v) => _hasDV = v)),
-                  ],
-                ),
+                Row(children: [Expanded(child: _buildStageToggle('Mains / CBT-2', _hasMains, (v) => _hasMains = v)), Expanded(child: _buildStageToggle('Skill / Physical', _hasSkillTest, (v) => _hasSkillTest = v))]),
+                Row(children: [Expanded(child: _buildStageToggle('Interview', _hasInterview, (v) => _hasInterview = v)), Expanded(child: _buildStageToggle('Doc Verification', _hasDV, (v) => _hasDV = v))]),
 
                 const Divider(height: 32),
                 const Text('Dates & Deadlines', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                 const SizedBox(height: 12),
                 Row(children: [Expanded(child: _buildDateField('App Start', _appStartDate, (d) => _appStartDate = d)), const SizedBox(width: 12), Expanded(child: _buildDateField('App End', _appEndDate, (d) => _appEndDate = d))]),
-                Row(children: [
-                  Expanded(child: _buildDateField('Prelims Date', _examDate, (d) => _examDate = d)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _hasMains ? _buildDateField('Mains Date', _mainsDate, (d) => _mainsDate = d) : const SizedBox.shrink())
-                ]),
-                Row(children: [
-                  Expanded(child: _hasSkillTest ? _buildDateField('Skill Test Date', _skillDate, (d) => _skillDate = d) : const SizedBox.shrink()),
-                  const SizedBox(width: 12),
-                  Expanded(child: _hasInterview ? _buildDateField('Interview Date', _interviewDate, (d) => _interviewDate = d) : const SizedBox.shrink()),
-                ]),
-                Row(children: [
-                  Expanded(child: _hasDV ? _buildDateField('DV Date', _dvDate, (d) => _dvDate = d) : const SizedBox.shrink()),
-                  const SizedBox(width: 12),
-                  Expanded(child: _buildDateField('Final Result', _resultDate, (d) => _resultDate = d)),
-                ]),
+                Row(children: [Expanded(child: _buildDateField('Prelims Date', _examDate, (d) => _examDate = d)), const SizedBox(width: 12), Expanded(child: _hasMains ? _buildDateField('Mains Date', _mainsDate, (d) => _mainsDate = d) : const SizedBox.shrink())]),
+                Row(children: [Expanded(child: _hasSkillTest ? _buildDateField('Skill Test Date', _skillDate, (d) => _skillDate = d) : const SizedBox.shrink()), const SizedBox(width: 12), Expanded(child: _hasInterview ? _buildDateField('Interview Date', _interviewDate, (d) => _interviewDate = d) : const SizedBox.shrink())]),
+                Row(children: [Expanded(child: _hasDV ? _buildDateField('DV Date', _dvDate, (d) => _dvDate = d) : const SizedBox.shrink()), const SizedBox(width: 12), Expanded(child: _buildDateField('Final Result', _resultDate, (d) => _resultDate = d))]),
 
                 const Divider(height: 32),
                 const Text('Credentials', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
@@ -283,15 +270,7 @@ class _ExamFormScreenState extends ConsumerState<ExamFormScreen> {
             ),
           ),
 
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              color: Theme.of(context).colorScheme.surface,
-              width: double.infinity,
-              child: FilledButton(onPressed: _isAiProcessing ? null : _saveExam, style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), child: const Text('Save Exam', style: TextStyle(fontSize: 16))),
-            ),
-          ),
+          Align(alignment: Alignment.bottomCenter, child: Container(padding: const EdgeInsets.all(16), color: Theme.of(context).colorScheme.surface, width: double.infinity, child: FilledButton(onPressed: _isAiProcessing ? null : _saveExam, style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), child: const Text('Save Exam', style: TextStyle(fontSize: 16))))),
 
           if (_isAiProcessing) Container(color: Colors.black.withOpacity(0.5), child: const Center(child: Card(child: Padding(padding: EdgeInsets.all(24.0), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: Colors.purple), SizedBox(height: 16), Text('AI is reading...', style: TextStyle(fontWeight: FontWeight.bold))]))))),
         ],

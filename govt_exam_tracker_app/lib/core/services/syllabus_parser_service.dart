@@ -4,9 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+import '../../data/models/exam_model.dart';
 import '../constants/app_constants.dart';
 
-// 1. ISOLATE: Hunts specifically for Syllabus and Exam Pattern pages in the PDF
 String _extractSyllabusPages(Uint8List bytes) {
   final document = PdfDocument(inputBytes: bytes);
   final extractor = PdfTextExtractor(document);
@@ -15,10 +15,9 @@ String _extractSyllabusPages(Uint8List bytes) {
   String syllabusContext = '';
 
   for (int i = 0; i < pageCount; i++) {
-    // Fast scan
     String pageText = extractor.extractText(startPageIndex: i, endPageIndex: i).toLowerCase();
 
-    // If we find syllabus or exam scheme keywords, we extract this page and the next 3 pages!
+    // Hunt specifically for pattern/syllabus tables
     if (pageText.contains('scheme of examination') ||
         pageText.contains('exam pattern') ||
         pageText.contains('indicative syllabus') ||
@@ -28,15 +27,14 @@ String _extractSyllabusPages(Uint8List bytes) {
       int endPage = (i + 3 < pageCount) ? i + 3 : pageCount - 1;
 
       for (int j = i; j <= endPage; j++) {
-        // Use layoutText: true to keep the Marks & Questions tables intact!
+        // layoutText is TRUE to preserve the exact table geometries for subjects and marks
         syllabusContext += '--- PAGE ${j+1} ---\n';
         syllabusContext += extractor.extractText(startPageIndex: j, endPageIndex: j, layoutText: true) + '\n\n';
       }
-
-      i = endPage; // Skip ahead to avoid duplicating pages
+      i = endPage;
     }
 
-    // Safety cap at ~6,000 tokens
+    // Hard cap at ~6000 tokens to leave room for web context
     if (syllabusContext.length > 24000) {
       syllabusContext = syllabusContext.substring(0, 24000);
       break;
@@ -49,9 +47,9 @@ String _extractSyllabusPages(Uint8List bytes) {
 
 class SyllabusParserService {
 
-  // 2. WEB RAG: Scrapes the internet for detailed chapter-wise topics
-  static Future<String> _fetchWebSyllabus(String examName) async {
-    final query = "$examName detailed syllabus chapter wise topics list 2026";
+  static Future<String> _fetchWebSyllabus(String examName, String? targetPost) async {
+    // Inject the specific post name to avoid mixing syllabi!
+    final query = "$examName ${targetPost ?? ''} detailed syllabus chapter wise topics list 2026";
     final searchUrl = Uri.parse('https://html.duckduckgo.com/html/?q=${Uri.encodeComponent(query)}');
 
     try {
@@ -63,7 +61,7 @@ class SyllabusParserService {
       if (searchRes.statusCode == 200) {
         final regExp = RegExp(r'class="result__snippet[^>]*>(.*?)</a>', dotAll: true);
         final matches = regExp.allMatches(searchRes.body);
-        for (var m in matches.take(8)) {
+        for (var m in matches.take(6)) {
           liveContext += m.group(1)!.replaceAll(RegExp(r'<[^>]*>'), '') + '\n';
         }
       }
@@ -73,17 +71,18 @@ class SyllabusParserService {
     }
   }
 
-  // 3. THE HYBRID ENGINE
-  static Future<Map<String, dynamic>?> generateSyllabusAndPattern(File pdfFile, String examName, String userApiKey) async {
+  static Future<Map<String, dynamic>?> generateSyllabusAndPattern(File pdfFile, ExamModel exam, String userApiKey) async {
     try {
-      // Step A: Extract PDF Tables
       final bytes = await pdfFile.readAsBytes();
       final pdfContext = await compute(_extractSyllabusPages, bytes);
+      final webContext = await _fetchWebSyllabus(exam.examName, exam.targetPost);
 
-      // Step B: Extract Web Data
-      final webContext = await _fetchWebSyllabus(examName);
+      // Build context of what stages exist so the AI structures the JSON perfectly
+      List<String> activeStages = ['Prelims'];
+      if (exam.hasMains) activeStages.add('Mains');
+      if (exam.hasSkillTest) activeStages.add('Skill Test');
+      if (exam.hasInterview) activeStages.add('Interview');
 
-      // Step C: Send to Groq
       final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
 
       final requestBody = {
@@ -96,13 +95,15 @@ class SyllabusParserService {
           {
             "role": "user",
             "content": '''
-              I am providing you with the official PDF text of the exam pattern, and live web search results for the syllabus.
-              Merge them into a highly accurate JSON structure.
+              I am providing the official PDF text and live web search results for: "${exam.examName}".
+              ${exam.targetPost != null && exam.targetPost!.isNotEmpty ? "CRITICAL: The user has applied for the specific post/discipline of: '${exam.targetPost}'. You MUST extract the syllabus ONLY for this post." : ""}
+              
+              The user has indicated this exam contains the following stages: ${activeStages.join(', ')}.
 
               RULES:
-              1. "examPatternData" must group by Stage (e.g., "Prelims", "Mains"). Each stage must list the sections/subjects, the number of questions, and the total marks.
-              2. "syllabusData" must group by Stage, then by Subject. Under each subject, provide a list of detailed topics to study. 
-              3. EVERY topic in the syllabus MUST be an object with the key "topic" (String) and "completed" (Boolean set to false).
+              1. "examPatternData" must group by the specified Stages. Each stage must list the sections/subjects, the number of questions, and the total marks.
+              2. "syllabusData" must group by Stage, then by Subject. Under each subject, provide a detailed list of topics to study. 
+              3. EVERY topic MUST be an object: {"topic": "Algebra", "completed": false}.
 
               JSON STRUCTURE TO STRICTLY FOLLOW:
               {

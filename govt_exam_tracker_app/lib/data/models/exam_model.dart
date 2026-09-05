@@ -7,20 +7,18 @@ class ExamModel {
   final String id;
   final String examName;
   final String? advertisementNo;
+  final String? targetPost; // NEW: The specific post/discipline
   final String? portalUrl;
   final ApplicationStatus status;
 
-  // Registration
   final DateTime? applicationStartDate;
   final DateTime? applicationEndDate;
 
-  // Dynamic Exam Stages
   final bool hasMains;
   final bool hasSkillTest;
   final bool hasInterview;
   final bool hasDV;
 
-  // Stage Dates
   final DateTime? examDate;
   final DateTime? mainsExamDate;
   final DateTime? skillTestDate;
@@ -28,13 +26,8 @@ class ExamModel {
   final DateTime? dvDate;
   final DateTime? resultDate;
 
-  // Phase Tracker
   final Map<String, String> phaseStates;
-
-  // NEW: Exam Pattern & Syllabus Storage
-  // Stores structures like: {"prelims": {"duration": "60 mins", "sections": [{"subject": "Math", "marks": 30, "questions": 30}]}}
   final Map<String, dynamic> examPatternData;
-  // Stores structures like: {"prelims": {"Math": {"topics": [{"name": "Algebra", "completed": false}]}}}
   final Map<String, dynamic> syllabusData;
 
   final String? usernameType;
@@ -53,6 +46,7 @@ class ExamModel {
     String? id,
     required this.examName,
     this.advertisementNo,
+    this.targetPost,
     this.portalUrl,
     this.status = ApplicationStatus.notApplied,
     this.applicationStartDate,
@@ -93,6 +87,7 @@ class ExamModel {
     String? id,
     String? examName,
     String? advertisementNo,
+    String? targetPost,
     String? portalUrl,
     ApplicationStatus? status,
     DateTime? applicationStartDate,
@@ -126,6 +121,7 @@ class ExamModel {
       id: id ?? this.id,
       examName: examName ?? this.examName,
       advertisementNo: advertisementNo ?? this.advertisementNo,
+      targetPost: targetPost ?? this.targetPost,
       portalUrl: portalUrl ?? this.portalUrl,
       status: status ?? this.status,
       applicationStartDate: applicationStartDate ?? this.applicationStartDate,
@@ -162,6 +158,7 @@ class ExamModel {
       'id': id,
       'exam_name': examName,
       'advertisement_no': advertisementNo,
+      'target_post': targetPost,
       'portal_url': portalUrl,
       'status': status.name,
       'application_start_date': applicationStartDate?.toIso8601String(),
@@ -212,27 +209,24 @@ class ExamModel {
       id: map['id'] as String,
       examName: map['exam_name'] as String,
       advertisementNo: map['advertisement_no'] as String?,
+      targetPost: map['target_post'] as String?,
       portalUrl: map['portal_url'] as String?,
       status: ApplicationStatus.values.firstWhere((e) => e.name == map['status'], orElse: () => ApplicationStatus.notApplied),
       applicationStartDate: map['application_start_date'] != null ? DateTime.tryParse(map['application_start_date']) : null,
       applicationEndDate: map['application_end_date'] != null ? DateTime.tryParse(map['application_end_date']) : null,
-
-      hasMains: map['has_mains'] == 1 || map['mains_exam_date'] != null,
+      hasMains: map['has_mains'] == 1,
       hasSkillTest: map['has_skill_test'] == 1,
       hasInterview: map['has_interview'] == 1,
       hasDV: map['has_dv'] == 1,
-
       examDate: map['exam_date'] != null ? DateTime.tryParse(map['exam_date']) : null,
       mainsExamDate: map['mains_exam_date'] != null ? DateTime.tryParse(map['mains_exam_date']) : null,
       skillTestDate: map['skill_test_date'] != null ? DateTime.tryParse(map['skill_test_date']) : null,
       interviewDate: map['interview_date'] != null ? DateTime.tryParse(map['interview_date']) : null,
       dvDate: map['dv_date'] != null ? DateTime.tryParse(map['dv_date']) : null,
       resultDate: map['result_date'] != null ? DateTime.tryParse(map['result_date']) : null,
-
       phaseStates: parsedPhases,
       examPatternData: parsedPattern,
       syllabusData: parsedSyllabus,
-
       usernameType: map['username_type'] as String?,
       username: map['username'] as String?,
       password: map['password'] as String?,

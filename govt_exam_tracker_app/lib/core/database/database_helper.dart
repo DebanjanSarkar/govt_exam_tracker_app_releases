@@ -3,8 +3,7 @@ import 'package:path/path.dart';
 
 class DatabaseHelper {
   static const String _databaseName = "govt_exam_tracker.db";
-  // BUMPED TO V4 FOR SYLLABUS & EXAM PATTERN JSON STORAGE
-  static const int _databaseVersion = 4;
+  static const int _databaseVersion = 5; // BUMPED TO V5
   static const String tableExams = "exams";
 
   DatabaseHelper._privateConstructor();
@@ -35,6 +34,7 @@ class DatabaseHelper {
         id TEXT PRIMARY KEY,
         exam_name TEXT NOT NULL,
         advertisement_no TEXT,
+        target_post TEXT,
         portal_url TEXT,
         status TEXT NOT NULL,
         application_start_date TEXT,
@@ -65,7 +65,6 @@ class DatabaseHelper {
         is_deleted INTEGER NOT NULL DEFAULT 0
       )
     ''');
-
     await db.execute('CREATE INDEX idx_status ON $tableExams (status)');
     await db.execute('CREATE INDEX idx_app_end ON $tableExams (application_end_date)');
     await db.execute('CREATE INDEX idx_exam_date ON $tableExams (exam_date)');
@@ -73,9 +72,7 @@ class DatabaseHelper {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute('ALTER TABLE $tableExams ADD COLUMN advertisement_no TEXT');
-    }
+    if (oldVersion < 2) await db.execute('ALTER TABLE $tableExams ADD COLUMN advertisement_no TEXT');
     if (oldVersion < 3) {
       await db.execute('ALTER TABLE $tableExams ADD COLUMN has_mains INTEGER NOT NULL DEFAULT 0');
       await db.execute('ALTER TABLE $tableExams ADD COLUMN has_skill_test INTEGER NOT NULL DEFAULT 0');
@@ -87,16 +84,17 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE $tableExams ADD COLUMN phase_states TEXT');
     }
     if (oldVersion < 4) {
-      // V4 Migration: Storage for AI-generated Syllabus & Patterns
       await db.execute('ALTER TABLE $tableExams ADD COLUMN exam_pattern_data TEXT');
       await db.execute('ALTER TABLE $tableExams ADD COLUMN syllabus_data TEXT');
+    }
+    if (oldVersion < 5) {
+      // V5 Migration
+      await db.execute('ALTER TABLE $tableExams ADD COLUMN target_post TEXT');
     }
   }
 
   Future<void> close() async {
     final db = _database;
-    if (db != null) {
-      await db.close();
-    }
+    if (db != null) await db.close();
   }
 }

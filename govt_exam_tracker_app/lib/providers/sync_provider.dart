@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/services/drive_sync_service.dart';
 import '../data/models/exam_model.dart';
+import '../core/constants/app_constants.dart';
 import 'exam_provider.dart';
 import 'ai_cooldown_provider.dart';
 
@@ -29,18 +30,14 @@ class SyncNotifier extends StateNotifier<SyncState> {
     _restoreSession();
   }
 
-  // NEW: Attempts to restore previous login silently
   Future<void> _restoreSession() async {
     try {
       final account = await _syncService.signInSilently();
       if (account != null) {
         state = state.copyWith(account: account);
-        // User's request: "take a git pull type of thing such that he always sees the recent info"
         await pullFromDrive();
       }
-    } catch (e) {
-      // Ignore silent sign-in errors, user just remains logged out
-    }
+    } catch (e) {}
   }
 
   Future<void> login() async {
@@ -66,9 +63,13 @@ class SyncNotifier extends StateNotifier<SyncState> {
     final localExams = await repository.getAllExams();
 
     final prefs = _ref.read(sharedPreferencesProvider);
-    final apiKey = prefs.getString('user_groq_api_key');
+    final aiSettings = {
+      'gemini_key': prefs.getString(AppConstants.prefsGeminiApiKey),
+      'groq_key': prefs.getString(AppConstants.prefsGroqApiKey),
+      'active_provider': prefs.getString(AppConstants.prefsActiveAiProvider) ?? 'groq',
+    };
 
-    final success = await _syncService.backupData(localExams, apiKey);
+    final success = await _syncService.backupData(localExams, aiSettings);
 
     if (success) state = state.copyWith(isLoading: false, lastSyncMessage: 'Backup successful');
     else state = state.copyWith(isLoading: false, error: 'Backup failed');
@@ -83,12 +84,23 @@ class SyncNotifier extends StateNotifier<SyncState> {
       return;
     }
 
-    final remoteApiKey = remoteData['api_key'] as String?;
+    // SYNC AI SETTINGS
+    final remoteAiSettings = remoteData['ai_settings'] as Map<String, dynamic>?;
     final prefs = _ref.read(sharedPreferencesProvider);
-    final localApiKey = prefs.getString('user_groq_api_key');
 
-    if (remoteApiKey != null && remoteApiKey.isNotEmpty && (localApiKey == null || localApiKey.isEmpty)) {
-      await prefs.setString('user_groq_api_key', remoteApiKey);
+    if (remoteAiSettings != null) {
+      final localGemini = prefs.getString(AppConstants.prefsGeminiApiKey);
+      final localGroq = prefs.getString(AppConstants.prefsGroqApiKey);
+
+      if ((localGemini == null || localGemini.isEmpty) && remoteAiSettings['gemini_key'] != null) {
+        await prefs.setString(AppConstants.prefsGeminiApiKey, remoteAiSettings['gemini_key']);
+      }
+      if ((localGroq == null || localGroq.isEmpty) && remoteAiSettings['groq_key'] != null) {
+        await prefs.setString(AppConstants.prefsGroqApiKey, remoteAiSettings['groq_key']);
+      }
+      if (remoteAiSettings['active_provider'] != null) {
+        await prefs.setString(AppConstants.prefsActiveAiProvider, remoteAiSettings['active_provider']);
+      }
     }
 
     final remoteExams = remoteData['exams'] as List<ExamModel>;

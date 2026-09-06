@@ -1,6 +1,6 @@
 {
-  "version": "1.0.2",
-  "build_number": 2,
+  "version": "2.0.0",
+  "build_number": 3,
   "url": "https://github.com/DebanjanSarkar/govt_exam_tracker_app_releases/releases/latest",
-  "release_notes": "Added features: Stepped UI, and AI current status checking for exams as per current exam phase."
+  "release_notes": "Added Preparation Hub - with AI syllabus and exam pattern generation within the app and preparation tracking, using both Groq's qwen, and gemini flash studio model."
 }

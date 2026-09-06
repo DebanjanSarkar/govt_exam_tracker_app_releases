@@ -11,7 +11,7 @@ import '../../providers/ai_cooldown_provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_update_service.dart';
 import 'exam_form_screen.dart';
-import 'preparation_screen.dart'; // NEW IMPORT
+import 'preparation_screen.dart';
 
 class ExamDetailScreen extends ConsumerStatefulWidget {
   final ExamModel exam;
@@ -68,16 +68,20 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
       return;
     }
 
+    // FIXED: Correctly loads either Groq or Gemini key based on settings
     final prefs = ref.read(sharedPreferencesProvider);
-    final userKey = prefs.getString(AppConstants.prefsApiKey);
+    final provider = prefs.getString(AppConstants.prefsActiveAiProvider) ?? 'groq';
+    final userKey = prefs.getString(provider == 'gemini' ? AppConstants.prefsGeminiApiKey : AppConstants.prefsGroqApiKey);
+
     if (userKey == null || userKey.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your Groq API Key in settings first!'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your Groq or Gemini API Key in settings first!'), backgroundColor: Colors.red));
       return;
     }
 
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Searching the web...')])))));
 
-    final result = await LiveUpdateService.getLiveStatus(exam.examName, phaseTitle, userKey);
+    // Passed provider argument to LiveUpdateService
+    final result = await LiveUpdateService.getLiveStatus(exam.examName, phaseTitle, userKey, provider);
     ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
 
     if (mounted) {
@@ -195,7 +199,6 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
     return Column(children: nodes);
   }
 
-  // NEW: THE COMPACT PREPARATION HUB
   Widget _buildPreparationHub(ExamModel exam) {
     int totalTopics = 0;
     int completedTopics = 0;
@@ -239,7 +242,7 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
               const SizedBox(height: 16),
               const Text('Your customized exam pattern and syllabus are ready.', style: TextStyle(color: Colors.grey)),
             ] else ...[
-              const Text('No study plan generated yet. Generate your pattern and syllabus now.', style: TextStyle(color: Colors.grey)),
+              const Text('No study plan generated yet. Generate your pattern and chapter-wise study checklist.', style: TextStyle(color: Colors.grey)),
             ],
             const SizedBox(height: 16),
             SizedBox(
@@ -294,10 +297,21 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
 
           const Divider(height: 32),
 
-          // THE NEW COMPACT PREPARATION HUB
-          _buildPreparationHub(currentExam),
+          const Text('Timeline', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
+          const SizedBox(height: 8),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Column(
+              children: [
+                ListTile(leading: const Icon(Icons.app_registration), title: const Text('Application Deadline'), subtitle: Text(_formatDate(currentExam.applicationEndDate))),
+                ListTile(leading: const Icon(Icons.event), title: const Text('Prelims Exam Date'), subtitle: Text(_formatDate(currentExam.examDate))),
+                if (currentExam.mainsExamDate != null) ListTile(leading: const Icon(Icons.event_available), title: const Text('Mains Exam Date'), subtitle: Text(_formatDate(currentExam.mainsExamDate))),
+                if (currentExam.resultDate != null) ListTile(leading: const Icon(Icons.emoji_events), title: const Text('Result Date'), subtitle: Text(_formatDate(currentExam.resultDate))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
 
-          const Divider(height: 32),
           const Text('Journey Tracker', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
           const SizedBox(height: 16),
 
@@ -352,6 +366,10 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
             const Text('Notes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)), const SizedBox(height: 8),
             Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Text(currentExam.notes!)), const SizedBox(height: 24),
           ],
+
+          const Divider(height: 16),
+          _buildPreparationHub(currentExam),
+          const SizedBox(height: 40),
         ],
       ),
     );

@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+import '../constants/app_constants.dart';
 
+// FAST PDF EXTRACTOR (layoutText: false)
 String _processPdfInIsolate(Uint8List bytes) {
   final document = PdfDocument(inputBytes: bytes);
   final extractor = PdfTextExtractor(document);
@@ -57,30 +59,25 @@ String _processPdfInIsolate(Uint8List bytes) {
 
 class AiParserService {
 
-  // THE DUAL ENGINE (Groq or Gemini)
-  static Future<String> _callDualEngineAi(String systemPrompt, String userPrompt, String userApiKey) async {
-    final isGemini = userApiKey.startsWith('AIza');
-
-    if (isGemini) {
-      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$userApiKey');
+  // DUAL ENGINE ROUTER
+  static Future<String> _callDualEngineAi(String systemPrompt, String userPrompt, String userApiKey, String provider) async {
+    if (provider == 'gemini') {
+      // FIXED: Uses AppConstants.geminiModel
+      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/${AppConstants.geminiModel}:generateContent?key=$userApiKey');
       final requestBody = {
         "contents": [{"parts": [{"text": "$systemPrompt\n\n$userPrompt"}]}],
         "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
       };
 
       final response = await http.post(url, headers: {'Content-Type': 'application/json'}, body: jsonEncode(requestBody)).timeout(const Duration(seconds: 25));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body)['candidates'][0]['content']['parts'][0]['text'];
-      } else if (response.statusCode == 429) {
-        throw Exception('RATE_LIMIT');
-      } else {
-        throw Exception('Gemini Error: ${response.statusCode}');
-      }
+      if (response.statusCode == 200) return jsonDecode(response.body)['candidates'][0]['content']['parts'][0]['text'];
+      else if (response.statusCode == 429) throw Exception('RATE_LIMIT');
+      else throw Exception('Gemini Error: ${response.statusCode} - ${response.body}');
     } else {
-      // Groq (Using Llama 3.3 for stability)
+      // FIXED: Uses AppConstants.groqModel
       final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
       final requestBody = {
-        "model": "llama-3.3-70b-versatile",
+        "model": AppConstants.groqModel,
         "messages": [
           {"role": "system", "content": systemPrompt},
           {"role": "user", "content": userPrompt}
@@ -89,17 +86,13 @@ class AiParserService {
       };
 
       final response = await http.post(url, headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $userApiKey'}, body: jsonEncode(requestBody)).timeout(const Duration(seconds: 25));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body)['choices'][0]['message']['content'];
-      } else if (response.statusCode == 429) {
-        throw Exception('RATE_LIMIT');
-      } else {
-        throw Exception('Groq Error: ${response.statusCode}');
-      }
+      if (response.statusCode == 200) return jsonDecode(response.body)['choices'][0]['message']['content'];
+      else if (response.statusCode == 429) throw Exception('RATE_LIMIT');
+      else throw Exception('Groq Error: ${response.statusCode} - ${response.body}');
     }
   }
 
-  static Future<Map<String, dynamic>?> parseNotificationPdf(File pdfFile, String userApiKey) async {
+  static Future<Map<String, dynamic>?> parseNotificationPdf(File pdfFile, String userApiKey, String provider) async {
     try {
       final bytes = await pdfFile.readAsBytes();
       final pdfText = await compute(_processPdfInIsolate, bytes);
@@ -126,7 +119,8 @@ class AiParserService {
           TEXT TO ANALYZE:
           $pdfText
         ''',
-          userApiKey
+          userApiKey,
+          provider
       );
 
       rawText = rawText.replaceAll('```json', '').replaceAll('```JSON', '').replaceAll('```', '').trim();

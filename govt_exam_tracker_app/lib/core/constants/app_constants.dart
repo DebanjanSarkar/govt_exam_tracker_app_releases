@@ -1,11 +1,12 @@
 class AppConstants {
-  // Hardcoded to the live, ultra-smart Qwen model
-  static String activeAiModel = 'qwen/qwen3.8-27b';
+  static const int aiCooldownSeconds = 75;
 
-  // GLOBAL AI COOLDOWN SETTINGS
-  static const int aiCooldownSeconds = 75; // Change this single value to affect the whole app
   static const String prefsLastAiCallKey = 'last_ai_call_timestamp';
+  static const String prefsGeminiApiKey = 'user_gemini_api_key';
+  static const String prefsGroqApiKey = 'user_groq_api_key';
+  static const String prefsActiveAiProvider = 'active_ai_provider';
 
-  // User's groq API key:
-  static const String prefsApiKey = 'user_groq_api_key';
+  // THE PROVEN, WORKING MODELS (No more 404 errors)
+  static const String groqModel = 'qwen/qwen3.8-27b';
+  static const String geminiModel = 'gemini-flash-latest';
 }

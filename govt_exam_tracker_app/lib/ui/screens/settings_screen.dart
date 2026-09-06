@@ -12,19 +12,76 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final TextEditingController _keyCtrl = TextEditingController();
+  final TextEditingController _geminiCtrl = TextEditingController();
+  final TextEditingController _groqCtrl = TextEditingController();
+
+  bool _isGeminiLocked = true;
+  bool _isGroqLocked = true;
+  String _activeProvider = 'groq';
 
   @override
   void initState() {
     super.initState();
     final prefs = ref.read(sharedPreferencesProvider);
-    _keyCtrl.text = prefs.getString(AppConstants.prefsApiKey) ?? '';
+    _geminiCtrl.text = prefs.getString(AppConstants.prefsGeminiApiKey) ?? '';
+    _groqCtrl.text = prefs.getString(AppConstants.prefsGroqApiKey) ?? '';
+    _activeProvider = prefs.getString(AppConstants.prefsActiveAiProvider) ?? 'groq';
   }
 
-  void _saveKey() async {
+  Future<void> _saveSettings() async {
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setString(AppConstants.prefsApiKey, _keyCtrl.text.trim());
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('API Key Saved successfully!')));
+    await prefs.setString(AppConstants.prefsGeminiApiKey, _geminiCtrl.text.trim());
+    await prefs.setString(AppConstants.prefsGroqApiKey, _groqCtrl.text.trim());
+    await prefs.setString(AppConstants.prefsActiveAiProvider, _activeProvider);
+
+    setState(() {
+      _isGeminiLocked = true;
+      _isGroqLocked = true;
+    });
+
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('AI Settings Saved Successfully!'), backgroundColor: Colors.green));
+  }
+
+  Future<bool> _confirmEdit(String providerName) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit API Key?'),
+        content: Text('Are you sure you want to edit your $providerName API Key? Incorrect changes will break the AI features.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Edit')),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  Widget _buildKeyField(String label, TextEditingController controller, bool isLocked, VoidCallback onUnlock) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextFormField(
+            controller: controller,
+            readOnly: isLocked,
+            obscureText: isLocked, // Shows dots when locked
+            decoration: InputDecoration(
+              labelText: label,
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.key),
+              filled: isLocked,
+              fillColor: isLocked ? Colors.grey.shade200 : Colors.white,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (isLocked)
+          IconButton.filledTonal(
+            onPressed: onUnlock,
+            icon: const Icon(Icons.edit),
+            tooltip: 'Edit Key',
+          )
+      ],
+    );
   }
 
   @override
@@ -36,9 +93,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: [
           const Icon(Icons.smart_toy, size: 64, color: Colors.purple),
           const SizedBox(height: 16),
-          const Text('Enable AI Auto-Fill & RAG', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const Text('Enable AI Features', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          const Text('To keep this app 100% free, provide your own Free API Key. The app supports both Groq and Google Gemini!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+          const Text('Provide your own free API keys to enable unlimited AI features without server fees.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
           const SizedBox(height: 32),
 
           Row(
@@ -61,20 +118,59 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
 
-          const SizedBox(height: 24),
-          TextField(
-            controller: _keyCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Paste your API Key (AIza... or gsk_...)',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.key),
+          const Divider(height: 48),
+
+          const Text('Engine for Current Use', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const Text('Select which engine the app should use right now.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              children: [
+                RadioListTile<String>(
+                  title: const Text('Use Google Gemini', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('1 Million Tokens/Min • Slower but Unlimited'),
+                  value: 'gemini',
+                  groupValue: _activeProvider,
+                  activeColor: Colors.purple,
+                  onChanged: (val) => setState(() => _activeProvider = val!),
+                ),
+                RadioListTile<String>(
+                  title: const Text('Use Groq (Llama-3) (Recommended)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Lightning Fast • Strict Daily Limit'),
+                  value: 'groq',
+                  groupValue: _activeProvider,
+                  activeColor: Colors.purple,
+                  onChanged: (val) => setState(() => _activeProvider = val!),
+                ),
+              ],
             ),
-            obscureText: true,
           ),
+
+          const SizedBox(height: 24),
+          _buildKeyField(
+              'Google Gemini API Key',
+              _geminiCtrl,
+              _isGeminiLocked,
+                  () async { if (await _confirmEdit('Gemini')) setState(() => _isGeminiLocked = false); }
+          ),
+
           const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _saveKey,
-            child: const Text('Save API Key'),
+          _buildKeyField(
+              'Groq API Key',
+              _groqCtrl,
+              _isGroqLocked,
+                  () async { if (await _confirmEdit('Groq')) setState(() => _isGroqLocked = false); }
+          ),
+
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton(
+              onPressed: _saveSettings,
+              child: const Text('Save AI Configuration', style: TextStyle(fontSize: 16)),
+            ),
           ),
         ],
       ),

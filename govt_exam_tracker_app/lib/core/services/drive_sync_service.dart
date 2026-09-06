@@ -7,23 +7,11 @@ import 'google_auth_client.dart';
 class DriveSyncService {
   static const String _backupFileName = 'govt_exams_backup.json';
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: [drive.DriveApi.driveAppdataScope],
-  );
+  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: [drive.DriveApi.driveAppdataScope]);
 
   GoogleSignInAccount? get currentUser => _googleSignIn.currentUser;
-
   Future<GoogleSignInAccount?> signIn() async => await _googleSignIn.signIn();
-
-  // NEW: Silent Sign-In restores the session when app opens from closed state
-  Future<GoogleSignInAccount?> signInSilently() async {
-    try {
-      return await _googleSignIn.signInSilently();
-    } catch (e) {
-      return null;
-    }
-  }
-
+  Future<GoogleSignInAccount?> signInSilently() async { try { return await _googleSignIn.signInSilently(); } catch (e) { return null; } }
   Future<void> signOut() async => await _googleSignIn.signOut();
 
   Future<drive.DriveApi?> _getDriveApi() async {
@@ -38,7 +26,7 @@ class DriveSyncService {
     return fileList.files?.isNotEmpty == true ? fileList.files!.first.id : null;
   }
 
-  Future<bool> backupData(List<ExamModel> exams, String? groqApiKey) async {
+  Future<bool> backupData(List<ExamModel> exams, Map<String, String?> aiSettings) async {
     try {
       final driveApi = await _getDriveApi();
       if (driveApi == null) return false;
@@ -46,7 +34,7 @@ class DriveSyncService {
       final fileId = await _getBackupFileId(driveApi);
 
       final Map<String, dynamic> payload = {
-        'api_key': groqApiKey,
+        'ai_settings': aiSettings,
         'exams': exams.map((e) => e.toMap()).toList(),
       };
 
@@ -72,7 +60,7 @@ class DriveSyncService {
       if (driveApi == null) return null;
 
       final fileId = await _getBackupFileId(driveApi);
-      if (fileId == null) return {'exams': <ExamModel>[], 'api_key': null};
+      if (fileId == null) return {'exams': <ExamModel>[], 'ai_settings': null};
 
       final response = await driveApi.files.get(fileId, downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
       final bytes = await response.stream.expand((x) => x).toList();
@@ -81,15 +69,18 @@ class DriveSyncService {
       final dynamic decoded = jsonDecode(jsonStr);
 
       if (decoded is List) {
-        return {
-          'exams': decoded.map((e) => ExamModel.fromMap(e)).toList(),
-          'api_key': null,
-        };
-      }
-      else if (decoded is Map<String, dynamic>) {
+        return {'exams': decoded.map((e) => ExamModel.fromMap(e)).toList(), 'ai_settings': null};
+      } else if (decoded is Map<String, dynamic>) {
+
+        // Handle backward compatibility mapping
+        Map<String, dynamic>? aiSettings = decoded['ai_settings'];
+        if (aiSettings == null && decoded['api_key'] != null) {
+          aiSettings = {'groq_key': decoded['api_key'], 'active_provider': 'groq'};
+        }
+
         return {
           'exams': (decoded['exams'] as List).map((e) => ExamModel.fromMap(e)).toList(),
-          'api_key': decoded['api_key'],
+          'ai_settings': aiSettings,
         };
       }
       return null;

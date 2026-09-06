@@ -26,7 +26,7 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          // FIXED: Wrapped Text in Expanded to prevent Right Overflow error
+          // FIXED: Wrapped the text in Expanded to prevent Right Overflow
           title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.orange), SizedBox(width: 8), Expanded(child: Text('Regenerate Syllabus?'))]),
           content: const Text('This will overwrite your current exam pattern and syllabus. All your checked progress will be reset. Are you sure?'),
           actions: [
@@ -44,8 +44,11 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
       return;
     }
 
+    // DUAL ENGINE ROUTING FIX
     final prefs = ref.read(sharedPreferencesProvider);
-    final userKey = prefs.getString(AppConstants.prefsApiKey);
+    final provider = prefs.getString(AppConstants.prefsActiveAiProvider) ?? 'groq';
+    final userKey = prefs.getString(provider == 'gemini' ? AppConstants.prefsGeminiApiKey : AppConstants.prefsGroqApiKey);
+
     if (userKey == null || userKey.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your Groq or Gemini API Key in settings first!'), backgroundColor: Colors.red));
       return;
@@ -55,7 +58,8 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
     if (result != null && result.files.single.path != null) {
       setState(() => _isGeneratingSyllabus = true);
       try {
-        final extractedData = await SyllabusParserService.generateSyllabusAndPattern(File(result.files.single.path!), currentExam, userKey);
+        // FIXED: Passed the "provider" argument to match the Dual Engine update!
+        final extractedData = await SyllabusParserService.generateSyllabusAndPattern(File(result.files.single.path!), currentExam, userKey, provider);
 
         if (extractedData != null) {
           final updatedExam = currentExam.copyWith(
@@ -68,7 +72,7 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
         ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
       } catch (e) {
         String errorMsg = e.toString();
-        if (errorMsg.contains('RATE_LIMIT')) errorMsg = 'Daily Token Limit Reached! Try your Gemini Key instead.';
+        if (errorMsg.contains('RATE_LIMIT')) errorMsg = 'Daily Token Limit Reached! Try switching to your Gemini Key in Settings.';
         else if (errorMsg.contains('TIMEOUT')) errorMsg = 'The AI took too long. Please try again.';
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: Colors.red));
         ref.read(aiCooldownProvider.notifier).startGlobalCooldown();

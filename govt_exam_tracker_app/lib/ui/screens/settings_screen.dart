@@ -12,10 +12,10 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final TextEditingController _openRouterCtrl = TextEditingController();
+  final TextEditingController _cerebrasCtrl = TextEditingController();
   final TextEditingController _groqCtrl = TextEditingController();
 
-  bool _isOpenRouterLocked = true;
+  bool _isCerebrasLocked = true;
   bool _isGroqLocked = true;
   String _activeProvider = 'groq';
 
@@ -23,19 +23,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void initState() {
     super.initState();
     final prefs = ref.read(sharedPreferencesProvider);
-    _openRouterCtrl.text = prefs.getString(AppConstants.prefsGeminiApiKey) ?? '';
+    _cerebrasCtrl.text = prefs.getString(AppConstants.prefsGeminiApiKey) ?? '';
     _groqCtrl.text = prefs.getString(AppConstants.prefsGroqApiKey) ?? '';
     _activeProvider = prefs.getString(AppConstants.prefsActiveAiProvider) ?? 'groq';
   }
 
   Future<void> _saveSettings() async {
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setString(AppConstants.prefsGeminiApiKey, _openRouterCtrl.text.trim());
+    await prefs.setString(AppConstants.prefsGeminiApiKey, _cerebrasCtrl.text.trim());
     await prefs.setString(AppConstants.prefsGroqApiKey, _groqCtrl.text.trim());
     await prefs.setString(AppConstants.prefsActiveAiProvider, _activeProvider);
 
     setState(() {
-      _isOpenRouterLocked = true;
+      _isCerebrasLocked = true;
       _isGroqLocked = true;
     });
 
@@ -98,10 +98,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               Expanded(
                 child: FilledButton.tonalIcon(
-                  // NEW: Links to OpenRouter
-                  onPressed: () => launchUrl(Uri.parse('https://openrouter.ai/keys'), mode: LaunchMode.externalApplication),
+                  // LINK TO CEREBRAS CLOUD
+                  onPressed: () => launchUrl(Uri.parse('https://cloud.cerebras.ai/'), mode: LaunchMode.externalApplication),
                   icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('Get OpenRouter Key', style: TextStyle(fontSize: 12)),
+                  label: const Text('Get Cerebras Key', style: TextStyle(fontSize: 12)),
                 ),
               ),
               const SizedBox(width: 8),
@@ -125,7 +125,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Column(
               children: [
                 RadioListTile<String>(
-                  title: const Text('Use Groq (Qwen 3.8)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  title: const Text('Use Groq', style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: const Text('Lightning Fast • Strict Daily Limit'),
                   value: 'groq',
                   groupValue: _activeProvider,
@@ -133,9 +133,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (val) => setState(() => _activeProvider = val!),
                 ),
                 RadioListTile<String>(
-                  title: const Text('Use OpenRouter (Llama 3.1 Free)', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Highly Stable'),
-                  value: 'gemini', // We keep the backend variable name 'gemini' so we don't break existing databases
+                  title: const Text('Use Cerebras (Llama 3.1)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('1 Million Tokens Free/Day • Very Stable'),
+                  value: 'gemini', // Internal legacy variable name
                   groupValue: _activeProvider,
                   activeColor: Colors.purple,
                   onChanged: (val) => setState(() => _activeProvider = val!),
@@ -146,15 +146,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           const SizedBox(height: 24),
           _buildKeyField(
-              'OpenRouter API Key (sk-or-v1...)',
-              _openRouterCtrl,
-              _isOpenRouterLocked,
-                  () async { if (await _confirmEdit('OpenRouter')) setState(() => _isOpenRouterLocked = false); }
+              'Cerebras API Key',
+              _cerebrasCtrl,
+              _isCerebrasLocked,
+                  () async { if (await _confirmEdit('Cerebras')) setState(() => _isCerebrasLocked = false); }
           ),
 
           const SizedBox(height: 16),
           _buildKeyField(
-              'Groq API Key (gsk_...)',
+              'Groq API Key',
               _groqCtrl,
               _isGroqLocked,
                   () async { if (await _confirmEdit('Groq')) setState(() => _isGroqLocked = false); }

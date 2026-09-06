@@ -5,27 +5,53 @@ import '../constants/app_constants.dart';
 
 class AiClientService {
 
-  // 1. OPENROUTER AUTO-DISCOVERY
-  static Future<String> _getOpenRouterFreeModel() async {
+  // 1. METICULOUS CEREBRAS AUTO-DISCOVERY
+  static Future<String> _getCerebrasModel(String apiKey) async {
     try {
-      final res = await http.get(Uri.parse('https://openrouter.ai/api/v1/models')).timeout(const Duration(seconds: 5));
+      final res = await http.get(
+          Uri.parse('https://api.cerebras.ai/v1/models'),
+          headers: {'Authorization': 'Bearer $apiKey'}
+      ).timeout(const Duration(seconds: 5));
+
       if (res.statusCode == 200) {
-        final models = jsonDecode(res.body)['data'] as List;
-        List<String> freeModels = [];
+        final data = jsonDecode(res.body);
+        final models = data['data'] as List;
 
+        debugPrint('\n========== LIVE CEREBRAS MODELS ==========');
         for (var m in models) {
-          if (m['id'].toString().endsWith(':free')) freeModels.add(m['id'].toString());
+          debugPrint(m['id'].toString());
+        }
+        debugPrint('==========================================\n');
+
+        // Priority 1: Heavy duty 70B model for high accuracy
+        for (var m in models) {
+          String id = m['id'].toString().toLowerCase();
+          if (id.contains('70b') && id.contains('llama')) {
+            debugPrint('🎯 Auto-Selected Cerebras Model: ${m['id']}');
+            return m['id'].toString();
+          }
         }
 
-        for (var p in ['qwen', 'llama', 'mistral', 'gemma']) {
-          final match = freeModels.firstWhere((id) => id.toLowerCase().contains(p), orElse: () => '');
-          if (match.isNotEmpty) return match;
+        // Priority 2: Blazing fast 8B model
+        for (var m in models) {
+          String id = m['id'].toString().toLowerCase();
+          if (id.contains('8b') && id.contains('llama')) {
+            debugPrint('🎯 Auto-Selected Cerebras Model: ${m['id']}');
+            return m['id'].toString();
+          }
         }
 
-        if (freeModels.isNotEmpty) return freeModels.first;
+        // Failsafe: Just return the first available model
+        if (models.isNotEmpty) return models.first['id'].toString();
+      } else {
+        debugPrint('Cerebras Models API Failed with status: ${res.statusCode}');
       }
-    } catch (_) {}
-    return 'qwen/qwen-2.5-7b-instruct:free'; // Ultimate Fallback
+    } catch (e) {
+      debugPrint('Failed to dynamically fetch Cerebras models: $e');
+    }
+
+    // Ultimate fallback if internet drops during discovery
+    return 'llama3.1-8b';
   }
 
   // 2. THE MASTER ROUTER
@@ -39,9 +65,9 @@ class AiClientService {
   }) async {
 
     if (provider == 'gemini') {
-      // NOTE: 'gemini' routes to OpenRouter for unlimited free access
-      final activeModel = await _getOpenRouterFreeModel();
-      final url = Uri.parse('https://openrouter.ai/api/v1/chat/completions');
+      // NOTE: 'gemini' variable internally routes to CEREBRAS Cloud!
+      final activeModel = await _getCerebrasModel(userApiKey);
+      final url = Uri.parse('https://api.cerebras.ai/v1/chat/completions');
 
       final requestBody = {
         "model": activeModel,
@@ -54,7 +80,10 @@ class AiClientService {
 
       final response = await http.post(
           url,
-          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $userApiKey'},
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $userApiKey'
+          },
           body: jsonEncode(requestBody)
       ).timeout(Duration(seconds: timeoutSeconds));
 
@@ -63,11 +92,11 @@ class AiClientService {
       } else if (response.statusCode == 429) {
         throw Exception('RATE_LIMIT');
       } else {
-        throw Exception('OpenRouter Error: ${response.statusCode} - ${response.body}');
+        throw Exception('Cerebras Error: ${response.statusCode} - ${response.body}');
       }
 
     } else {
-      // GROQ (Using ultra-fast Qwen)
+      // GROQ (Using the stable model from Constants)
       final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
 
       final requestBody = {
@@ -81,7 +110,10 @@ class AiClientService {
 
       final response = await http.post(
           url,
-          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $userApiKey'},
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $userApiKey'
+          },
           body: jsonEncode(requestBody)
       ).timeout(Duration(seconds: timeoutSeconds));
 

@@ -49,6 +49,10 @@ dependencies:
   # For checking package version number
   package_info_plus: ^8.0.2
 
+  # Excel Generation & File Sharing
+  excel: ^4.0.3
+  share_plus: ^9.0.0
+
 
 dev_dependencies:
   flutter_test:

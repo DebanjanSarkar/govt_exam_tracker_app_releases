@@ -12,10 +12,10 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final TextEditingController _geminiCtrl = TextEditingController();
+  final TextEditingController _openRouterCtrl = TextEditingController();
   final TextEditingController _groqCtrl = TextEditingController();
 
-  bool _isGeminiLocked = true;
+  bool _isOpenRouterLocked = true;
   bool _isGroqLocked = true;
   String _activeProvider = 'groq';
 
@@ -23,19 +23,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void initState() {
     super.initState();
     final prefs = ref.read(sharedPreferencesProvider);
-    _geminiCtrl.text = prefs.getString(AppConstants.prefsGeminiApiKey) ?? '';
+    _openRouterCtrl.text = prefs.getString(AppConstants.prefsGeminiApiKey) ?? '';
     _groqCtrl.text = prefs.getString(AppConstants.prefsGroqApiKey) ?? '';
     _activeProvider = prefs.getString(AppConstants.prefsActiveAiProvider) ?? 'groq';
   }
 
   Future<void> _saveSettings() async {
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setString(AppConstants.prefsGeminiApiKey, _geminiCtrl.text.trim());
+    await prefs.setString(AppConstants.prefsGeminiApiKey, _openRouterCtrl.text.trim());
     await prefs.setString(AppConstants.prefsGroqApiKey, _groqCtrl.text.trim());
     await prefs.setString(AppConstants.prefsActiveAiProvider, _activeProvider);
 
     setState(() {
-      _isGeminiLocked = true;
+      _isOpenRouterLocked = true;
       _isGroqLocked = true;
     });
 
@@ -63,7 +63,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           child: TextFormField(
             controller: controller,
             readOnly: isLocked,
-            obscureText: isLocked, // Shows dots when locked
+            obscureText: isLocked,
             decoration: InputDecoration(
               labelText: label,
               border: const OutlineInputBorder(),
@@ -75,11 +75,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         const SizedBox(width: 8),
         if (isLocked)
-          IconButton.filledTonal(
-            onPressed: onUnlock,
-            icon: const Icon(Icons.edit),
-            tooltip: 'Edit Key',
-          )
+          IconButton.filledTonal(onPressed: onUnlock, icon: const Icon(Icons.edit), tooltip: 'Edit Key')
       ],
     );
   }
@@ -102,9 +98,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               Expanded(
                 child: FilledButton.tonalIcon(
-                  onPressed: () => launchUrl(Uri.parse('https://aistudio.google.com/app/apikey'), mode: LaunchMode.externalApplication),
+                  // NEW: Links to OpenRouter
+                  onPressed: () => launchUrl(Uri.parse('https://openrouter.ai/keys'), mode: LaunchMode.externalApplication),
                   icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('Get Gemini Key', style: TextStyle(fontSize: 12)),
+                  label: const Text('Get OpenRouter Key', style: TextStyle(fontSize: 12)),
                 ),
               ),
               const SizedBox(width: 8),
@@ -128,17 +125,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Column(
               children: [
                 RadioListTile<String>(
-                  title: const Text('Use Google Gemini', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('1 Million Tokens/Min • Slower but Unlimited'),
-                  value: 'gemini',
+                  title: const Text('Use Groq (Qwen 3.8)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Lightning Fast • Strict Daily Limit'),
+                  value: 'groq',
                   groupValue: _activeProvider,
                   activeColor: Colors.purple,
                   onChanged: (val) => setState(() => _activeProvider = val!),
                 ),
                 RadioListTile<String>(
-                  title: const Text('Use Groq (Llama-3) (Recommended)', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Lightning Fast • Strict Daily Limit'),
-                  value: 'groq',
+                  title: const Text('Use OpenRouter (Llama 3.1 Free)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Highly Stable'),
+                  value: 'gemini', // We keep the backend variable name 'gemini' so we don't break existing databases
                   groupValue: _activeProvider,
                   activeColor: Colors.purple,
                   onChanged: (val) => setState(() => _activeProvider = val!),
@@ -149,15 +146,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           const SizedBox(height: 24),
           _buildKeyField(
-              'Google Gemini API Key',
-              _geminiCtrl,
-              _isGeminiLocked,
-                  () async { if (await _confirmEdit('Gemini')) setState(() => _isGeminiLocked = false); }
+              'OpenRouter API Key (sk-or-v1...)',
+              _openRouterCtrl,
+              _isOpenRouterLocked,
+                  () async { if (await _confirmEdit('OpenRouter')) setState(() => _isOpenRouterLocked = false); }
           ),
 
           const SizedBox(height: 16),
           _buildKeyField(
-              'Groq API Key',
+              'Groq API Key (gsk_...)',
               _groqCtrl,
               _isGroqLocked,
                   () async { if (await _confirmEdit('Groq')) setState(() => _isGroqLocked = false); }

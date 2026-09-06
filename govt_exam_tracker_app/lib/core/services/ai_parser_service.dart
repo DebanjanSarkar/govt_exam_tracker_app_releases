@@ -2,11 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
-import '../constants/app_constants.dart';
+import 'ai_client_service.dart'; // NEW IMPORT
 
-// FAST PDF EXTRACTOR (layoutText: false)
 String _processPdfInIsolate(Uint8List bytes) {
   final document = PdfDocument(inputBytes: bytes);
   final extractor = PdfTextExtractor(document);
@@ -58,49 +56,16 @@ String _processPdfInIsolate(Uint8List bytes) {
 }
 
 class AiParserService {
-
-  // DUAL ENGINE ROUTER
-  static Future<String> _callDualEngineAi(String systemPrompt, String userPrompt, String userApiKey, String provider) async {
-    if (provider == 'gemini') {
-      // FIXED: Uses AppConstants.geminiModel
-      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/${AppConstants.geminiModel}:generateContent?key=$userApiKey');
-      final requestBody = {
-        "contents": [{"parts": [{"text": "$systemPrompt\n\n$userPrompt"}]}],
-        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
-      };
-
-      final response = await http.post(url, headers: {'Content-Type': 'application/json'}, body: jsonEncode(requestBody)).timeout(const Duration(seconds: 25));
-      if (response.statusCode == 200) return jsonDecode(response.body)['candidates'][0]['content']['parts'][0]['text'];
-      else if (response.statusCode == 429) throw Exception('RATE_LIMIT');
-      else throw Exception('Gemini Error: ${response.statusCode} - ${response.body}');
-    } else {
-      // FIXED: Uses AppConstants.groqModel
-      final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
-      final requestBody = {
-        "model": AppConstants.groqModel,
-        "messages": [
-          {"role": "system", "content": systemPrompt},
-          {"role": "user", "content": userPrompt}
-        ],
-        "temperature": 0.1
-      };
-
-      final response = await http.post(url, headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $userApiKey'}, body: jsonEncode(requestBody)).timeout(const Duration(seconds: 25));
-      if (response.statusCode == 200) return jsonDecode(response.body)['choices'][0]['message']['content'];
-      else if (response.statusCode == 429) throw Exception('RATE_LIMIT');
-      else throw Exception('Groq Error: ${response.statusCode} - ${response.body}');
-    }
-  }
-
   static Future<Map<String, dynamic>?> parseNotificationPdf(File pdfFile, String userApiKey, String provider) async {
     try {
       final bytes = await pdfFile.readAsBytes();
       final pdfText = await compute(_processPdfInIsolate, bytes);
       if (pdfText.isEmpty) throw Exception('No readable text found in this PDF.');
 
-      String rawText = await _callDualEngineAi(
-          "You are a precise data extractor for Indian Government Job Notifications. Output ONLY valid JSON starting with { and ending with }.",
-          '''
+      // USE THE NEW MODULAR CLIENT
+      String rawText = await AiClientService.callAi(
+        systemPrompt: "You are a precise data extractor for Indian Government Job Notifications. Output ONLY valid JSON starting with { and ending with }.",
+        userPrompt: '''
           Analyze the following text extracted from a recruitment PDF. 
           Return ONLY a valid JSON object with these exact keys. Do not include markdown formatting, backticks, or conversational text. 
           If a date is not found, make it null. Use format "yyyy-MM-dd" for dates.
@@ -119,8 +84,9 @@ class AiParserService {
           TEXT TO ANALYZE:
           $pdfText
         ''',
-          userApiKey,
-          provider
+        userApiKey: userApiKey,
+        provider: provider,
+        temperature: 0.1,
       );
 
       rawText = rawText.replaceAll('```json', '').replaceAll('```JSON', '').replaceAll('```', '').trim();

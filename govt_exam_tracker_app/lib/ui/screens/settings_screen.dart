@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/ai_cooldown_provider.dart';
 import '../../core/constants/app_constants.dart';
+import '../../providers/theme_provider.dart'; // NEW IMPORT
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -39,7 +40,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _isGroqLocked = true;
     });
 
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('AI Settings Saved Successfully!'), backgroundColor: Colors.green));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings Saved Successfully!'), backgroundColor: Colors.green));
   }
 
   Future<bool> _confirmEdit(String providerName) async {
@@ -57,6 +58,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildKeyField(String label, TextEditingController controller, bool isLocked, VoidCallback onUnlock) {
+    final theme = Theme.of(context);
     return Row(
       children: [
         Expanded(
@@ -69,7 +71,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               border: const OutlineInputBorder(),
               prefixIcon: const Icon(Icons.key),
               filled: isLocked,
-              fillColor: isLocked ? Colors.grey.shade200 : Colors.white,
+              // Adapts perfectly to light/dark mode
+              fillColor: isLocked ? theme.colorScheme.surfaceContainerHighest : theme.colorScheme.surface,
             ),
           ),
         ),
@@ -82,23 +85,75 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeProvider);
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('AI Settings')),
+      appBar: AppBar(title: const Text('App Settings')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Icon(Icons.smart_toy, size: 64, color: Colors.purple),
-          const SizedBox(height: 16),
-          const Text('Enable AI Features', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          // ==========================================
+          // APPEARANCE & THEME SETTINGS
+          // ==========================================
+          const Row(
+            children: [
+              Icon(Icons.palette, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('Appearance', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(border: Border.all(color: theme.colorScheme.outlineVariant), borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              children: [
+                RadioListTile<ThemeMode>(
+                  title: const Text('Match System Default', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Automatically switches with your phone.'),
+                  value: ThemeMode.system,
+                  groupValue: themeMode,
+                  activeColor: Colors.blue,
+                  onChanged: (val) => ref.read(themeProvider.notifier).setTheme(val!),
+                ),
+                RadioListTile<ThemeMode>(
+                  title: const Text('Light Mode', style: TextStyle(fontWeight: FontWeight.bold)),
+                  value: ThemeMode.light,
+                  groupValue: themeMode,
+                  activeColor: Colors.blue,
+                  onChanged: (val) => ref.read(themeProvider.notifier).setTheme(val!),
+                ),
+                RadioListTile<ThemeMode>(
+                  title: const Text('Dark Mode', style: TextStyle(fontWeight: FontWeight.bold)),
+                  value: ThemeMode.dark,
+                  groupValue: themeMode,
+                  activeColor: Colors.blue,
+                  onChanged: (val) => ref.read(themeProvider.notifier).setTheme(val!),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 48),
+
+          // ==========================================
+          // AI CONFIGURATION SETTINGS
+          // ==========================================
+          const Row(
+            children: [
+              Icon(Icons.smart_toy, color: Colors.purple),
+              SizedBox(width: 8),
+              Text('AI Configuration', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
           const SizedBox(height: 8),
-          const Text('Provide your own free API keys to enable unlimited AI features without server fees.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 32),
+          const Text('Provide your own free API keys to enable unlimited AI features without server fees.', style: TextStyle(color: Colors.grey)),
+          const SizedBox(height: 24),
 
           Row(
             children: [
               Expanded(
                 child: FilledButton.tonalIcon(
-                  // LINK TO CEREBRAS CLOUD
                   onPressed: () => launchUrl(Uri.parse('https://cloud.cerebras.ai/'), mode: LaunchMode.externalApplication),
                   icon: const Icon(Icons.open_in_new, size: 16),
                   label: const Text('Get Cerebras Key', style: TextStyle(fontSize: 12)),
@@ -115,13 +170,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
 
-          const Divider(height: 48),
+          const SizedBox(height: 24),
 
-          const Text('Engine for Current Use', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const Text('Select which engine the app should use right now.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const Text('Engine for Current Use', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           const SizedBox(height: 8),
           Container(
-            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(border: Border.all(color: theme.colorScheme.outlineVariant), borderRadius: BorderRadius.circular(12)),
             child: Column(
               children: [
                 RadioListTile<String>(
@@ -135,7 +189,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 RadioListTile<String>(
                   title: const Text('Use Cerebras (Llama 3.1)', style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: const Text('1 Million Tokens Free/Day • Very Stable'),
-                  value: 'gemini', // Internal legacy variable name
+                  value: 'gemini',
                   groupValue: _activeProvider,
                   activeColor: Colors.purple,
                   onChanged: (val) => setState(() => _activeProvider = val!),

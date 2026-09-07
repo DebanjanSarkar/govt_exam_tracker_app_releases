@@ -5,13 +5,10 @@ import 'core/theme/app_theme.dart';
 import 'ui/screens/dashboard_screen.dart';
 import 'core/services/notification_service.dart';
 import 'providers/ai_cooldown_provider.dart';
+import 'providers/theme_provider.dart'; // NEW IMPORT
 
 void main() {
-  // 1. Ensure bindings are ready immediately
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 2. Run the App INSTANTLY to clear the native black Splash Screen.
-  // All heavy "await" initializations are moved inside the widget.
   runApp(const AppInitializer());
 }
 
@@ -35,25 +32,18 @@ class _AppInitializerState extends State<AppInitializer> {
 
   Future<void> _initializeApp() async {
     try {
-      // Safely initialize Background Notifications
       await NotificationService.initialize();
-
-      // Initialize Persistent Storage
       _prefs = await SharedPreferences.getInstance();
 
-      // If everything succeeds, update state to show the main app
       if (mounted) {
         setState(() {
           _isInitialized = true;
         });
-
-        // Request notification permissions safely AFTER the UI has rendered
         WidgetsBinding.instance.addPostFrameCallback((_) {
           NotificationService.requestPermission();
         });
       }
     } catch (e, stackTrace) {
-      // If ANYTHING fails, catch it and show it on screen instead of freezing!
       if (mounted) {
         setState(() {
           _errorMsg = e.toString() + "\n\n" + stackTrace.toString();
@@ -64,12 +54,13 @@ class _AppInitializerState extends State<AppInitializer> {
 
   @override
   Widget build(BuildContext context) {
-    // SCENARIO A: An error occurred during startup
     if (_errorMsg != null) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system, // Respect system theme during crash
         home: Scaffold(
-          backgroundColor: Colors.white,
           body: SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
@@ -89,17 +80,18 @@ class _AppInitializerState extends State<AppInitializer> {
       );
     }
 
-    // SCENARIO B: Still loading dependencies (Shows instead of a black screen)
     if (!_isInitialized) {
-      return const MaterialApp(
+      return MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          backgroundColor: Colors.white,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system, // Respect system theme during loading
+        home: const Scaffold(
           body: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(color: Color(0xFF1E3A8A)),
+                CircularProgressIndicator(),
                 SizedBox(height: 16),
                 Text('Warming up engines...', style: TextStyle(color: Colors.grey)),
               ],
@@ -109,7 +101,6 @@ class _AppInitializerState extends State<AppInitializer> {
       );
     }
 
-    // SCENARIO C: Success! Load the Riverpod scope and App
     return ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(_prefs),
@@ -119,15 +110,20 @@ class _AppInitializerState extends State<AppInitializer> {
   }
 }
 
-class GovtExamTrackerApp extends StatelessWidget {
+// CHANGED TO CONSUMER WIDGET to listen to Theme Provider
+class GovtExamTrackerApp extends ConsumerWidget {
   const GovtExamTrackerApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+
     return MaterialApp(
       title: 'Government Exams Tracker',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode, // DYNAMICALLY RESPONDS TO THE PROVIDER
       home: const DashboardScreen(),
     );
   }

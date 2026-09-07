@@ -9,4 +9,7 @@ class AppConstants {
   // THE PROVEN, WORKING MODELS
   static const String groqModel = 'qwen/qwen3.8-27b';
   static const String cerebrasModel = 'llama3.1-8b'; // Cerebras' blazing fast free model
+
+  // NEW: Theme Mode Persistence Key
+  static const String prefsThemeModeKey = 'app_theme_mode';
 }

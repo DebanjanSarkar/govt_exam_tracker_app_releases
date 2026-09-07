@@ -1,7 +1,7 @@
 name: govt_exam_tracker_app
 description: "A local-first, smart tracker for Indian Government Exams."
 publish_to: 'none'
-version: 3.0.0+5
+version: 4.0.0+6
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

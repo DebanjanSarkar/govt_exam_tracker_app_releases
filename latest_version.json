@@ -1,6 +1,6 @@
 {
-  "version": "3.0.0",
-  "build_number": 5,
+  "version": "4.0.0",
+  "build_number": 6,
   "url": "https://github.com/DebanjanSarkar/govt_exam_tracker_app_releases/releases/latest",
-  "release_notes": "The App now packs inbuilt Kotlin service for beautiful excel export - users can export their entire data as excel, and keep it as backup, or use it for excel tracking."
+  "release_notes": "Light Mode, Dark Mode, and match system mode settings are added - for lesser strain on eyes and comfortable viewing!"
 }

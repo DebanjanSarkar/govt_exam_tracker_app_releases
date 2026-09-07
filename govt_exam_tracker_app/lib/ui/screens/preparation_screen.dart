@@ -26,7 +26,6 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          // FIXED: Wrapped the text in Expanded to prevent Right Overflow
           title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.orange), SizedBox(width: 8), Expanded(child: Text('Regenerate Syllabus?'))]),
           content: const Text('This will overwrite your current exam pattern and syllabus. All your checked progress will be reset. Are you sure?'),
           actions: [
@@ -44,13 +43,12 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
       return;
     }
 
-    // DUAL ENGINE ROUTING FIX
     final prefs = ref.read(sharedPreferencesProvider);
     final provider = prefs.getString(AppConstants.prefsActiveAiProvider) ?? 'groq';
     final userKey = prefs.getString(provider == 'gemini' ? AppConstants.prefsGeminiApiKey : AppConstants.prefsGroqApiKey);
 
     if (userKey == null || userKey.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your Groq or Gemini API Key in settings first!'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your Groq or Cerebras API Key in settings first!'), backgroundColor: Colors.red));
       return;
     }
 
@@ -58,7 +56,6 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
     if (result != null && result.files.single.path != null) {
       setState(() => _isGeneratingSyllabus = true);
       try {
-        // FIXED: Passed the "provider" argument to match the Dual Engine update!
         final extractedData = await SyllabusParserService.generateSyllabusAndPattern(File(result.files.single.path!), currentExam, userKey, provider);
 
         if (extractedData != null) {
@@ -72,7 +69,7 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
         ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
       } catch (e) {
         String errorMsg = e.toString();
-        if (errorMsg.contains('RATE_LIMIT')) errorMsg = 'Daily Token Limit Reached! Try switching to your Gemini Key in Settings.';
+        if (errorMsg.contains('RATE_LIMIT')) errorMsg = 'Daily Token Limit Reached! Try switching to your other API Key in Settings.';
         else if (errorMsg.contains('TIMEOUT')) errorMsg = 'The AI took too long. Please try again.';
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: Colors.red));
         ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
@@ -107,6 +104,7 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
   Widget _buildStageView(ExamModel exam, String stage) {
     final pattern = exam.examPatternData[stage];
     final syllabus = exam.syllabusData[stage];
+    final theme = Theme.of(context); // DYNAMIC THEME SUPPORT
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -114,7 +112,9 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
         if (pattern is List && pattern.isNotEmpty) ...[
           const Text('Exam Pattern', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)), const SizedBox(height: 12),
           Card(
-            elevation: 0, shape: RoundedRectangleBorder(side: BorderSide(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+            color: theme.colorScheme.surface, // ADAPTS TO DARK MODE
+            shape: RoundedRectangleBorder(side: BorderSide(color: theme.colorScheme.outlineVariant), borderRadius: BorderRadius.circular(12)),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -149,18 +149,39 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
             double progress = topics.isNotEmpty ? completedInSub / topics.length : 0;
 
             return Card(
-              margin: const EdgeInsets.only(bottom: 12), elevation: 0, color: Colors.white, shape: RoundedRectangleBorder(side: BorderSide(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+              margin: const EdgeInsets.only(bottom: 12),
+              elevation: 0,
+              color: theme.colorScheme.surface, // ADAPTS TO DARK MODE
+              shape: RoundedRectangleBorder(side: BorderSide(color: theme.colorScheme.outlineVariant), borderRadius: BorderRadius.circular(12)),
               child: Theme(
                 data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
                   title: Text(subject, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  subtitle: Padding(padding: const EdgeInsets.only(top: 8.0, right: 32.0), child: LinearProgressIndicator(value: progress, backgroundColor: Colors.grey.shade200, color: AppTheme.successColor, minHeight: 6, borderRadius: BorderRadius.circular(3))),
+                  subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 8.0, right: 32.0),
+                      child: LinearProgressIndicator(
+                          value: progress,
+                          backgroundColor: theme.colorScheme.surfaceContainerHighest, // ADAPTS TO DARK MODE
+                          color: AppTheme.successColor,
+                          minHeight: 6,
+                          borderRadius: BorderRadius.circular(3)
+                      )
+                  ),
                   children: List.generate(topics.length, (index) {
                     final topic = topics[index];
                     final isCompleted = topic['completed'] == true;
                     return CheckboxListTile(
-                      title: Text(topic['topic'].toString(), style: TextStyle(fontSize: 14, color: isCompleted ? Colors.grey : Colors.black87, decoration: isCompleted ? TextDecoration.lineThrough : null)),
-                      value: isCompleted, activeColor: AppTheme.successColor, controlAffinity: ListTileControlAffinity.leading,
+                      title: Text(
+                          topic['topic'].toString(),
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: isCompleted ? Colors.grey : theme.colorScheme.onSurface, // CORRECT TEXT COLOR FOR BOTH MODES
+                              decoration: isCompleted ? TextDecoration.lineThrough : null
+                          )
+                      ),
+                      value: isCompleted,
+                      activeColor: AppTheme.successColor,
+                      controlAffinity: ListTileControlAffinity.leading,
                       onChanged: (val) => _toggleTopicCompletion(exam, stage, subject, index, val),
                     );
                   }),
@@ -179,7 +200,7 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
               const Text('Missing a stage or made a mistake?', style: TextStyle(color: Colors.grey, fontSize: 12)), const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: _isGeneratingSyllabus ? null : () => _generateSyllabusAi(exam, isRegenerating: true),
-                icon: const Icon(Icons.refresh, size: 18), label: const Text('Regenerate Syllabus & Pattern'), style: OutlinedButton.styleFrom(foregroundColor: Colors.grey.shade700),
+                icon: const Icon(Icons.refresh, size: 18), label: const Text('Regenerate Syllabus & Pattern'), style: OutlinedButton.styleFrom(foregroundColor: Colors.grey.shade500),
               ),
             ],
           ),
@@ -204,7 +225,14 @@ class _PreparationScreenState extends ConsumerState<PreparationScreen> {
             child: Scaffold(
               appBar: AppBar(
                 title: const Text('Preparation Room'),
-                bottom: TabBar(isScrollable: true, labelColor: Colors.white, unselectedLabelColor: Colors.white60, indicatorColor: Colors.white, indicatorWeight: 3, tabs: stages.map((s) => Tab(text: s.toUpperCase())).toList()),
+                bottom: TabBar(
+                    isScrollable: true,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white60,
+                    indicatorColor: Colors.white,
+                    indicatorWeight: 3,
+                    tabs: stages.map((s) => Tab(text: s.toUpperCase())).toList()
+                ),
               ),
               body: TabBarView(children: stages.map((stage) => _buildStageView(currentExam, stage)).toList()),
             ),

@@ -119,7 +119,7 @@ class MainDrawer extends ConsumerWidget {
 
                   ListTile(
                     leading: const Icon(Icons.settings, color: Colors.purple),
-                    title: const Text('AI Settings'),
+                    title: const Text('AI and Theme Settings'),
                     onTap: () {
                       Navigator.pop(context);
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));

@@ -16,19 +16,45 @@ class AppTheme {
         seedColor: primaryColor,
         primary: primaryColor,
         secondary: secondaryColor,
-        // background and surface are managed beautifully by ColorScheme in Material 3
+        brightness: Brightness.light,
       ),
-      textTheme: GoogleFonts.interTextTheme(),
+      textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
       appBarTheme: const AppBarTheme(
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
       ),
-      // Fix: Used CardThemeData for the latest Flutter Master channel compatibility
       cardTheme: CardThemeData(
         elevation: 2,
         shadowColor: Colors.black12,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+  }
+
+  // NEW: Meticulously designed Dark Theme
+  static ThemeData get darkTheme {
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primaryColor,
+        primary: const Color(0xFF60A5FA), // Lighter blue for dark mode contrast
+        secondary: secondaryColor,
+        brightness: Brightness.dark,
+        surface: const Color(0xFF121212), // Standard Material 3 dark surface
+      ),
+      textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF0F172A), // Very dark slate for the AppBar
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      cardTheme: CardThemeData(
+        elevation: 2,
+        shadowColor: Colors.black45,
+        color: const Color(0xFF1E1E1E), // Slightly elevated card color
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );

@@ -94,7 +94,7 @@ The `lib/` directory is structured to ensure scalability and clean architecture:
 
 We respect your privacy. The **Govt Exam Tracker App** does not collect, sell, or share your personal data with third parties. All exam data is stored locally on your device and synced exclusively to your private Google Drive Application Data folder. 
 
-For the complete privacy policy, please visit: `[Insert Link to your Privacy Policy webpage here]`
+For the complete privacy policy, please visit: `https://debanjansarkar.github.io/govt_exam_tracker_app_releases/privacy-policy.html`
 
 ---
 

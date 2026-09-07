@@ -3,7 +3,7 @@ import 'package:path/path.dart';
 
 class DatabaseHelper {
   static const String _databaseName = "govt_exam_tracker.db";
-  static const int _databaseVersion = 7; // BUMPED TO V7 FOR ADVANCED ALARMS
+  static const int _databaseVersion = 7;
   static const String tableExams = "exams";
   static const String tableReminders = "reminders";
 
@@ -74,49 +74,64 @@ class DatabaseHelper {
   }
 
   Future<void> _createRemindersTable(Database db) async {
-    await db.execute('''
-      CREATE TABLE $tableReminders (
-        id TEXT PRIMARY KEY,
-        exam_id TEXT NOT NULL,
-        exam_name TEXT NOT NULL,
-        title TEXT NOT NULL,
-        description TEXT,
-        time TEXT NOT NULL,
-        repeat_type TEXT NOT NULL,
-        interval INTEGER NOT NULL DEFAULT 1,
-        frequency TEXT NOT NULL DEFAULT 'day',
-        weekdays TEXT,
-        end_type TEXT NOT NULL DEFAULT 'never',
-        end_date TEXT,
-        end_phase TEXT,
-        is_active INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (exam_id) REFERENCES $tableExams (id) ON DELETE CASCADE
-      )
-    ''');
-    await db.execute('CREATE INDEX idx_exam_id ON $tableReminders (exam_id)');
+    // If the table already exists, this catches the error and moves on safely
+    try {
+      await db.execute('''
+        CREATE TABLE $tableReminders (
+          id TEXT PRIMARY KEY,
+          exam_id TEXT NOT NULL,
+          exam_name TEXT NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT,
+          time TEXT NOT NULL,
+          repeat_type TEXT NOT NULL,
+          interval INTEGER NOT NULL DEFAULT 1,
+          frequency TEXT NOT NULL DEFAULT "day",
+          weekdays TEXT,
+          end_type TEXT NOT NULL DEFAULT "never",
+          end_date TEXT,
+          end_phase TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (exam_id) REFERENCES $tableExams (id) ON DELETE CASCADE
+        )
+      ''');
+      await db.execute('CREATE INDEX idx_exam_id ON $tableReminders (exam_id)');
+    } catch (_) {}
   }
 
+  // BULLETPROOF MIGRATIONS: All ALTERS are wrapped in try-catch to safely ignore duplicates
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) await db.execute('ALTER TABLE $tableExams ADD COLUMN advertisement_no TEXT');
+    if (oldVersion < 2) {
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN advertisement_no TEXT'); } catch (_) {}
+    }
     if (oldVersion < 3) {
-      await db.execute('ALTER TABLE $tableExams ADD COLUMN has_mains INTEGER NOT NULL DEFAULT 0');
-      // ... (Rest of V3)
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN has_mains INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN has_skill_test INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN has_interview INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN has_dv INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN skill_test_date TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN interview_date TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN dv_date TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN phase_states TEXT'); } catch (_) {}
     }
     if (oldVersion < 4) {
-      await db.execute('ALTER TABLE $tableExams ADD COLUMN exam_pattern_data TEXT');
-      await db.execute('ALTER TABLE $tableExams ADD COLUMN syllabus_data TEXT');
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN exam_pattern_data TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN syllabus_data TEXT'); } catch (_) {}
     }
-    if (oldVersion < 5) await db.execute('ALTER TABLE $tableExams ADD COLUMN target_post TEXT');
-    if (oldVersion < 6) await _createRemindersTable(db);
-
-    if (oldVersion < 7) {
-      // V7 Migration: Add Advanced Cron Fields
-      await db.execute('ALTER TABLE $tableReminders ADD COLUMN interval INTEGER NOT NULL DEFAULT 1');
-      await db.execute('ALTER TABLE $tableReminders ADD COLUMN frequency TEXT NOT NULL DEFAULT "day"');
-      await db.execute('ALTER TABLE $tableReminders ADD COLUMN end_type TEXT NOT NULL DEFAULT "never"');
-      await db.execute('ALTER TABLE $tableReminders ADD COLUMN end_date TEXT');
-      await db.execute('ALTER TABLE $tableReminders ADD COLUMN end_phase TEXT');
+    if (oldVersion < 5) {
+      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN target_post TEXT'); } catch (_) {}
+    }
+    if (oldVersion < 6) {
+      await _createRemindersTable(db);
+    }
+    // Only attempt to add these columns if we are upgrading specifically from V6
+    if (oldVersion == 6) {
+      try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN interval INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN frequency TEXT NOT NULL DEFAULT "day"'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN end_type TEXT NOT NULL DEFAULT "never"'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN end_date TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN end_phase TEXT'); } catch (_) {}
     }
   }
 

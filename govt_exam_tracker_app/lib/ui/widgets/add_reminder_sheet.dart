@@ -31,6 +31,8 @@ class _AddReminderSheetState extends ConsumerState<AddReminderSheet> {
   DateTime? _endDate;
   String? _endPhase;
 
+  bool _isHighPriority = false; // NEW FIELD
+
   final Map<int, String> _dayMap = {
     1: 'M', 2: 'T', 3: 'W', 4: 'T', 5: 'F', 6: 'S', 7: 'S'
   };
@@ -52,6 +54,7 @@ class _AddReminderSheetState extends ConsumerState<AddReminderSheet> {
       _endType = r.endType;
       _endDate = r.endDate;
       _endPhase = r.endPhase;
+      _isHighPriority = r.isHighPriority;
     }
   }
 
@@ -92,14 +95,6 @@ class _AddReminderSheetState extends ConsumerState<AddReminderSheet> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one day for weekly repeat.'), backgroundColor: Colors.red));
       return;
     }
-    if (_endType == 'date' && _endDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select an end date.'), backgroundColor: Colors.red));
-      return;
-    }
-    if (_endType == 'phase' && _endPhase == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select an end phase.'), backgroundColor: Colors.red));
-      return;
-    }
 
     if (widget.reminderToEdit != null) {
       final confirm = await showDialog<bool>(
@@ -134,6 +129,7 @@ class _AddReminderSheetState extends ConsumerState<AddReminderSheet> {
       endDate: _endType == 'date' ? _endDate : null,
       endPhase: _endType == 'phase' ? _endPhase : null,
       isActive: widget.reminderToEdit?.isActive ?? true,
+      isHighPriority: _isHighPriority, // SAVES THE TOGGLE
     );
 
     if (widget.reminderToEdit == null) {
@@ -175,15 +171,9 @@ class _AddReminderSheetState extends ConsumerState<AddReminderSheet> {
             Text(widget.reminderToEdit == null ? 'Add Routine Alarm' : 'Edit Routine Alarm', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
 
-            TextField(
-              controller: _titleCtrl,
-              decoration: const InputDecoration(labelText: 'Task Title (e.g. Study Quants)', border: OutlineInputBorder()),
-            ),
+            TextField(controller: _titleCtrl, decoration: const InputDecoration(labelText: 'Task Title (e.g. Study Quants)', border: OutlineInputBorder())),
             const SizedBox(height: 12),
-            TextField(
-              controller: _descCtrl,
-              decoration: const InputDecoration(labelText: 'Description (Optional)', border: OutlineInputBorder()),
-            ),
+            TextField(controller: _descCtrl, decoration: const InputDecoration(labelText: 'Description (Optional)', border: OutlineInputBorder())),
             const SizedBox(height: 16),
 
             Row(
@@ -191,16 +181,13 @@ class _AddReminderSheetState extends ConsumerState<AddReminderSheet> {
                 Expanded(
                   child: InkWell(
                     onTap: _pickTime,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(labelText: 'Alert Time', border: OutlineInputBorder()),
-                      child: Text(_selectedTime.format(context), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    ),
+                    child: InputDecorator(decoration: const InputDecoration(labelText: 'Alert Time', border: OutlineInputBorder()), child: Text(_selectedTime.format(context), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    isExpanded: true, // FIXED: Prevents text overflow on small screens
+                    isExpanded: true,
                     value: _repeatType,
                     decoration: const InputDecoration(labelText: 'Repeat', border: OutlineInputBorder()),
                     items: const [
@@ -220,29 +207,16 @@ class _AddReminderSheetState extends ConsumerState<AddReminderSheet> {
 
               Row(
                 children: [
-                  const Text('Repeats every', style: TextStyle(fontSize: 14)),
+                  const Flexible(child: Text('Repeats every', style: TextStyle(fontSize: 14))),
                   const SizedBox(width: 8),
-                  SizedBox(
-                    width: 60,
-                    child: TextField(
-                      controller: _intervalCtrl,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(vertical: 8)),
-                    ),
-                  ),
+                  SizedBox(width: 50, child: TextField(controller: _intervalCtrl, keyboardType: TextInputType.number, textAlign: TextAlign.center, inputFormatters: [FilteringTextInputFormatter.digitsOnly], decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(vertical: 8)))),
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      isExpanded: true, // FIXED: Forces the dropdown to obey the screen limits!
+                      isExpanded: true,
                       value: _frequency,
                       decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
-                      items: const [
-                        DropdownMenuItem(value: 'day', child: Text('Day(s)')),
-                        DropdownMenuItem(value: 'week', child: Text('Week(s)')),
-                        DropdownMenuItem(value: 'month', child: Text('Month(s)')),
-                      ],
+                      items: const [DropdownMenuItem(value: 'day', child: Text('Day(s)')), DropdownMenuItem(value: 'week', child: Text('Week(s)')), DropdownMenuItem(value: 'month', child: Text('Month(s)'))],
                       onChanged: (val) => setState(() => _frequency = val!),
                     ),
                   ),
@@ -259,16 +233,8 @@ class _AddReminderSheetState extends ConsumerState<AddReminderSheet> {
                     final isSelected = _selectedDays.contains(entry.key);
                     return ChoiceChip(
                       label: Text(entry.value, style: TextStyle(color: isSelected ? Colors.purple : theme.colorScheme.onSurface)),
-                      selected: isSelected,
-                      selectedColor: Colors.purple.withOpacity(0.2),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      showCheckmark: true,
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) _selectedDays.add(entry.key);
-                          else _selectedDays.remove(entry.key);
-                        });
-                      },
+                      selected: isSelected, selectedColor: Colors.purple.withOpacity(0.2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), showCheckmark: true,
+                      onSelected: (selected) { setState(() { if (selected) _selectedDays.add(entry.key); else _selectedDays.remove(entry.key); }); },
                     );
                   }).toList(),
                 ),
@@ -276,64 +242,34 @@ class _AddReminderSheetState extends ConsumerState<AddReminderSheet> {
 
               const SizedBox(height: 16),
               const Text('Ends:', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-
-              RadioListTile<String>(
-                title: const Text('Never'),
-                value: 'never',
-                groupValue: _endType,
-                contentPadding: EdgeInsets.zero,
-                activeColor: Colors.purple,
-                onChanged: (val) => setState(() => _endType = val!),
-              ),
+              RadioListTile<String>(title: const Text('Never'), value: 'never', groupValue: _endType, contentPadding: EdgeInsets.zero, activeColor: Colors.purple, onChanged: (val) => setState(() => _endType = val!)),
 
               Row(
                 children: [
-                  Expanded(
-                    child: RadioListTile<String>(
-                      title: const Text('On Date'),
-                      value: 'date',
-                      groupValue: _endType,
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: Colors.purple,
-                      onChanged: (val) => setState(() => _endType = val!),
-                    ),
-                  ),
-                  if (_endType == 'date')
-                    TextButton.icon(
-                      onPressed: _pickEndDate,
-                      icon: const Icon(Icons.calendar_today, size: 16),
-                      label: Text(_endDate != null ? DateFormat('dd MMM yyyy').format(_endDate!) : 'Select Date'),
-                    )
+                  Expanded(child: RadioListTile<String>(title: const Text('On Date'), value: 'date', groupValue: _endType, contentPadding: EdgeInsets.zero, activeColor: Colors.purple, onChanged: (val) => setState(() => _endType = val!))),
+                  if (_endType == 'date') TextButton.icon(onPressed: _pickEndDate, icon: const Icon(Icons.calendar_today, size: 16), label: Text(_endDate != null ? DateFormat('dd MMM yyyy').format(_endDate!) : 'Select Date'))
                 ],
               ),
 
               Row(
                 children: [
-                  Expanded(
-                    child: RadioListTile<String>(
-                      title: const Text('After Phase'),
-                      value: 'phase',
-                      groupValue: _endType,
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: Colors.purple,
-                      onChanged: (val) => setState(() {
-                        _endType = val!;
-                        _endPhase ??= 'prelims';
-                      }),
-                    ),
-                  ),
-                  if (_endType == 'phase')
-                    Expanded(
-                      child: DropdownButton<String>(
-                        isExpanded: true, // FIXED
-                        value: _endPhase,
-                        items: phaseItems,
-                        onChanged: (val) => setState(() => _endPhase = val),
-                      ),
-                    ),
+                  Expanded(child: RadioListTile<String>(title: const Text('After Phase'), value: 'phase', groupValue: _endType, contentPadding: EdgeInsets.zero, activeColor: Colors.purple, onChanged: (val) => setState(() { _endType = val!; _endPhase ??= 'prelims'; }))),
+                  if (_endType == 'phase') Expanded(child: DropdownButton<String>(isExpanded: true, value: _endPhase, items: phaseItems, onChanged: (val) => setState(() => _endPhase = val))),
                 ],
               ),
             ],
+
+            const Divider(height: 32),
+
+            // NEW: HIGH PRIORITY TOGGLE
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('High Priority Alarm (Wakes Device)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
+              subtitle: const Text('Rings loudly through alarm volume and turns screen on, even in Sleep Mode. Best for strict study schedules.', style: TextStyle(fontSize: 12)),
+              value: _isHighPriority,
+              activeColor: Colors.purple,
+              onChanged: (val) => setState(() => _isHighPriority = val),
+            ),
 
             const SizedBox(height: 24),
             SizedBox(

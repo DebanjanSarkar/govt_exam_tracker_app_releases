@@ -7,20 +7,19 @@ class ReminderModel {
   final String examName;
   final String title;
   final String? description;
-  final DateTime time; // The anchor time/date
+  final DateTime time;
 
-  // Advanced Recurrence
-  final String repeatType; // 'none', 'custom'
-  final int interval; // e.g., Every "2" weeks
-  final String frequency; // 'day', 'week', 'month'
-  final List<int> weekdays; // 1 = Mon, 7 = Sun (Only used if frequency == 'week')
+  final String repeatType;
+  final int interval;
+  final String frequency;
+  final List<int> weekdays;
 
-  // End Conditions
-  final String endType; // 'never', 'date', 'phase'
+  final String endType;
   final DateTime? endDate;
-  final String? endPhase; // 'prelims', 'mains', 'skill', 'interview', 'dv', 'result'
+  final String? endPhase;
 
   final bool isActive;
+  final bool isHighPriority; // NEW FIELD
   final DateTime createdAt;
 
   ReminderModel({
@@ -38,6 +37,7 @@ class ReminderModel {
     this.endDate,
     this.endPhase,
     this.isActive = true,
+    this.isHighPriority = false, // Defaults to false
     DateTime? createdAt,
   })  : id = id ?? const Uuid().v4(),
         weekdays = weekdays ?? [],
@@ -58,6 +58,7 @@ class ReminderModel {
     DateTime? endDate,
     String? endPhase,
     bool? isActive,
+    bool? isHighPriority,
     DateTime? createdAt,
   }) {
     return ReminderModel(
@@ -75,6 +76,7 @@ class ReminderModel {
       endDate: endDate ?? this.endDate,
       endPhase: endPhase ?? this.endPhase,
       isActive: isActive ?? this.isActive,
+      isHighPriority: isHighPriority ?? this.isHighPriority,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -95,6 +97,7 @@ class ReminderModel {
       'end_date': endDate?.toIso8601String(),
       'end_phase': endPhase,
       'is_active': isActive ? 1 : 0,
+      'is_high_priority': isHighPriority ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
     };
   }
@@ -107,7 +110,6 @@ class ReminderModel {
       title: map['title'],
       description: map['description'],
       time: DateTime.parse(map['time']),
-      // Backward compatibility logic
       repeatType: map['repeat_type'] ?? 'none',
       interval: map['interval'] ?? 1,
       frequency: map['frequency'] ?? 'day',
@@ -116,6 +118,7 @@ class ReminderModel {
       endDate: map['end_date'] != null ? DateTime.tryParse(map['end_date']) : null,
       endPhase: map['end_phase'],
       isActive: map['is_active'] == 1,
+      isHighPriority: map['is_high_priority'] == 1,
       createdAt: DateTime.parse(map['created_at']),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
 import '../../data/models/exam_model.dart';
 import '../../data/models/reminder_model.dart';
 import '../database/database_helper.dart';
@@ -13,7 +14,7 @@ class NotificationService {
     tz.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
-    const AndroidInitializationSettings androidInitSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const AndroidInitializationSettings androidInitSettings = AndroidInitializationSettings('ic_notification');
     const InitializationSettings initSettings = InitializationSettings(android: androidInitSettings);
 
     await _notificationsPlugin.initialize(
@@ -31,20 +32,41 @@ class NotificationService {
     return (stringId.hashCode + variant).abs() % 2147483647;
   }
 
-  // ===========================================================================
-  // ADVANCED CUSTOM ALARMS & REMINDERS (V7)
-  // ===========================================================================
-
   static Future<void> scheduleCustomReminder(ReminderModel reminder) async {
     await cancelCustomReminder(reminder.id);
     if (!reminder.isActive) return;
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'custom_study_reminders', 'Study & Task Reminders',
-      channelDescription: 'Custom alarms set by you for mock tests, studying, and checking results',
-      importance: Importance.max, priority: Priority.high, color: Colors.purple,
+    final isHighPriority = reminder.isHighPriority;
+
+    final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500, 200, 1500]);
+    final Int32List flags = isHighPriority ? Int32List.fromList([4]) : Int32List.fromList([0]); // 4 is FLAG_INSISTENT (Loops sound)
+
+    // THE DYNAMIC HARDWARE CONFIGURATION
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      isHighPriority ? 'govt_exam_alarms_high_v2' : 'govt_exam_alarms_norm_v2',
+      isHighPriority ? 'High Priority Alarms' : 'Standard Reminders',
+      channelDescription: isHighPriority ? 'Wakes screen and rings continuously.' : 'Standard notifications.',
+      importance: Importance.max,
+      priority: Priority.high,
+      color: Colors.purple,
+      playSound: true,
+      enableVibration: true,
+      vibrationPattern: vibrationPattern,
+      additionalFlags: flags,
+      sound: const RawResourceAndroidNotificationSound('exam_alarm'),
+
+      // CRITICAL FOR DOZE BYPASS:
+      // If high priority, route sound through Alarm stream and force screen wake!
+      category: isHighPriority ? AndroidNotificationCategory.alarm : AndroidNotificationCategory.reminder,
+      audioAttributesUsage: isHighPriority ? AudioAttributesUsage.alarm : AudioAttributesUsage.notification,
+      fullScreenIntent: isHighPriority,
     );
-    const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
+
+    final NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
+
+    // CRITICAL FOR HARDWARE SCHEDULING:
+    // alarmClock mode uses zero RAM and forces the OS to wake up at the exact millisecond!
+    final scheduleMode = isHighPriority ? AndroidScheduleMode.alarmClock : AndroidScheduleMode.exactAllowWhileIdle;
 
     final title = reminder.examName;
     final body = reminder.description != null && reminder.description!.isNotEmpty
@@ -75,7 +97,7 @@ class NotificationService {
         await _notificationsPlugin.zonedSchedule(
           _generateId(reminder.id, 0), title, body,
           tz.TZDateTime.from(reminder.time, tz.local), platformDetails,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          androidScheduleMode: scheduleMode,
           uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
           payload: reminder.examId,
         );
@@ -115,7 +137,7 @@ class NotificationService {
         await _notificationsPlugin.zonedSchedule(
           _generateId(reminder.id, i), title, body,
           tz.TZDateTime.from(upcomingDates[i], tz.local), platformDetails,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          androidScheduleMode: scheduleMode,
           uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
           payload: reminder.examId,
         );
@@ -129,18 +151,18 @@ class NotificationService {
     }
   }
 
-  // ===========================================================================
-  // DEFAULT EXAM LIFECYCLE ALARMS (Restored!)
-  // ===========================================================================
   static Future<void> scheduleExamReminders(ExamModel exam) async {
     await cancelExamReminders(exam.id);
     if (!exam.reminderEnabled || exam.status == ApplicationStatus.archived) return;
 
-    const AndroidNotificationDetails defaultDetails = AndroidNotificationDetails(
-      'govt_exam_reminders', 'Exam Reminders',
-      importance: Importance.max, priority: Priority.high, color: Color(0xFF1E3A8A),
+    final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500]);
+    final AndroidNotificationDetails defaultDetails = AndroidNotificationDetails(
+      'govt_exam_reminders_v2', 'Exam Deadlines',
+      importance: Importance.max, priority: Priority.high, color: const Color(0xFF1E3A8A),
+      enableVibration: true, vibrationPattern: vibrationPattern,
+      sound: const RawResourceAndroidNotificationSound('exam_alarm'),
     );
-    const NotificationDetails platformDetails = NotificationDetails(android: defaultDetails);
+    final NotificationDetails platformDetails = NotificationDetails(android: defaultDetails);
 
     final now = DateTime.now();
 
@@ -153,7 +175,7 @@ class NotificationService {
           tz.TZDateTime.from(scheduledTime, tz.local), platformDetails,
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-          payload: exam.id, // Deep link payload!
+          payload: exam.id,
         );
       }
     }
@@ -166,7 +188,7 @@ class NotificationService {
           tz.TZDateTime.from(scheduledTime, tz.local), platformDetails,
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-          payload: exam.id, // Deep link payload!
+          payload: exam.id,
         );
       }
     }

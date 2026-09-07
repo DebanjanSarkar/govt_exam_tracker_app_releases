@@ -3,7 +3,7 @@ import 'package:path/path.dart';
 
 class DatabaseHelper {
   static const String _databaseName = "govt_exam_tracker.db";
-  static const int _databaseVersion = 7;
+  static const int _databaseVersion = 8; // BUMPED TO V8 FOR HIGH PRIORITY ALARMS
   static const String tableExams = "exams";
   static const String tableReminders = "reminders";
 
@@ -74,7 +74,6 @@ class DatabaseHelper {
   }
 
   Future<void> _createRemindersTable(Database db) async {
-    // If the table already exists, this catches the error and moves on safely
     try {
       await db.execute('''
         CREATE TABLE $tableReminders (
@@ -92,6 +91,7 @@ class DatabaseHelper {
           end_date TEXT,
           end_phase TEXT,
           is_active INTEGER NOT NULL DEFAULT 1,
+          is_high_priority INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           FOREIGN KEY (exam_id) REFERENCES $tableExams (id) ON DELETE CASCADE
         )
@@ -100,11 +100,8 @@ class DatabaseHelper {
     } catch (_) {}
   }
 
-  // BULLETPROOF MIGRATIONS: All ALTERS are wrapped in try-catch to safely ignore duplicates
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN advertisement_no TEXT'); } catch (_) {}
-    }
+    if (oldVersion < 2) { try { await db.execute('ALTER TABLE $tableExams ADD COLUMN advertisement_no TEXT'); } catch (_) {} }
     if (oldVersion < 3) {
       try { await db.execute('ALTER TABLE $tableExams ADD COLUMN has_mains INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
       try { await db.execute('ALTER TABLE $tableExams ADD COLUMN has_skill_test INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
@@ -119,19 +116,18 @@ class DatabaseHelper {
       try { await db.execute('ALTER TABLE $tableExams ADD COLUMN exam_pattern_data TEXT'); } catch (_) {}
       try { await db.execute('ALTER TABLE $tableExams ADD COLUMN syllabus_data TEXT'); } catch (_) {}
     }
-    if (oldVersion < 5) {
-      try { await db.execute('ALTER TABLE $tableExams ADD COLUMN target_post TEXT'); } catch (_) {}
-    }
-    if (oldVersion < 6) {
-      await _createRemindersTable(db);
-    }
-    // Only attempt to add these columns if we are upgrading specifically from V6
+    if (oldVersion < 5) { try { await db.execute('ALTER TABLE $tableExams ADD COLUMN target_post TEXT'); } catch (_) {} }
+    if (oldVersion < 6) { await _createRemindersTable(db); }
     if (oldVersion == 6) {
       try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN interval INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
       try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN frequency TEXT NOT NULL DEFAULT "day"'); } catch (_) {}
       try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN end_type TEXT NOT NULL DEFAULT "never"'); } catch (_) {}
       try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN end_date TEXT'); } catch (_) {}
       try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN end_phase TEXT'); } catch (_) {}
+    }
+    if (oldVersion < 8) {
+      // V8 Migration: Add High Priority Toggle
+      try { await db.execute('ALTER TABLE $tableReminders ADD COLUMN is_high_priority INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
     }
   }
 

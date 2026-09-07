@@ -3,110 +3,177 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter/material.dart';
 import '../../data/models/exam_model.dart';
+import '../../data/models/reminder_model.dart';
+import '../database/database_helper.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
 
-  // 1. Safe Initialization (No Popups during splash screen)
-  static Future<void> initialize() async {
+  static Future<void> initialize(void Function(NotificationResponse) onNotificationTap) async {
     tz.initializeTimeZones();
-    // Use local device timezone
-    tz.setLocalLocation(tz.getLocation('Asia/Kolkata')); // Indian Standard Time
+    tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
-    const AndroidInitializationSettings androidInitSettings =
-    AndroidInitializationSettings('@mipmap/ic_launcher');
+    const AndroidInitializationSettings androidInitSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initSettings = InitializationSettings(android: androidInitSettings);
 
-    const InitializationSettings initSettings = InitializationSettings(
-      android: androidInitSettings,
+    await _notificationsPlugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: onNotificationTap,
     );
-
-    await _notificationsPlugin.initialize(initSettings);
   }
 
-  // 2. The Permission Request (Called safely AFTER the app draws)
   static Future<void> requestPermission() async {
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+    await _notificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
+    await _notificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestExactAlarmsPermission();
   }
 
-  // Generates a unique integer ID from a string ID so we can cancel/overwrite specific alarms
-  static int _generateId(String stringId, int type) {
-    return (stringId.hashCode + type).abs() % 2147483647; // Max 32-bit int
+  static int _generateId(String stringId, int variant) {
+    return (stringId.hashCode + variant).abs() % 2147483647;
   }
 
-  static Future<void> scheduleExamReminders(ExamModel exam) async {
-    // 1. Cancel existing notifications for this exam first (in case dates were updated)
-    await cancelExamReminders(exam.id);
+  // ===========================================================================
+  // ADVANCED CUSTOM ALARMS & REMINDERS (V7)
+  // ===========================================================================
 
-    if (!exam.reminderEnabled || exam.status == ApplicationStatus.archived) return;
+  static Future<void> scheduleCustomReminder(ReminderModel reminder) async {
+    await cancelCustomReminder(reminder.id);
+    if (!reminder.isActive) return;
+
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'custom_study_reminders', 'Study & Task Reminders',
+      channelDescription: 'Custom alarms set by you for mock tests, studying, and checking results',
+      importance: Importance.max, priority: Priority.high, color: Colors.purple,
+    );
+    const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
+
+    final title = reminder.examName;
+    final body = reminder.description != null && reminder.description!.isNotEmpty
+        ? '${reminder.title}\n${reminder.description}'
+        : reminder.title;
+
+    DateTime? absoluteEndDate = reminder.endDate;
+    if (reminder.endType == 'phase' && reminder.endPhase != null) {
+      final db = await DatabaseHelper.instance.database;
+      final maps = await db.query(DatabaseHelper.tableExams, where: 'id = ?', whereArgs: [reminder.examId]);
+      if (maps.isNotEmpty) {
+        final exam = ExamModel.fromMap(maps.first);
+        switch (reminder.endPhase) {
+          case 'prelims': absoluteEndDate = exam.examDate; break;
+          case 'mains': absoluteEndDate = exam.mainsExamDate; break;
+          case 'skill': absoluteEndDate = exam.skillTestDate; break;
+          case 'interview': absoluteEndDate = exam.interviewDate; break;
+          case 'dv': absoluteEndDate = exam.dvDate; break;
+          case 'result': absoluteEndDate = exam.resultDate; break;
+        }
+      }
+    }
 
     final now = DateTime.now();
 
-    // Application Deadline Reminder (2 Days Before)
+    if (reminder.repeatType == 'none') {
+      if (reminder.time.isAfter(now)) {
+        await _notificationsPlugin.zonedSchedule(
+          _generateId(reminder.id, 0), title, body,
+          tz.TZDateTime.from(reminder.time, tz.local), platformDetails,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+          payload: reminder.examId,
+        );
+      }
+    }
+    else if (reminder.repeatType == 'custom') {
+      List<DateTime> upcomingDates = [];
+      DateTime pointer = reminder.time.isBefore(now)
+          ? DateTime(now.year, now.month, now.day, reminder.time.hour, reminder.time.minute)
+          : reminder.time;
+
+      if (pointer.isBefore(now)) pointer = pointer.add(const Duration(days: 1));
+
+      while (upcomingDates.length < 15) {
+        if (absoluteEndDate != null && pointer.isAfter(absoluteEndDate)) break;
+
+        if (reminder.frequency == 'day') {
+          upcomingDates.add(pointer);
+          pointer = pointer.add(Duration(days: reminder.interval));
+        }
+        else if (reminder.frequency == 'week') {
+          if (reminder.weekdays.contains(pointer.weekday)) {
+            upcomingDates.add(pointer);
+          }
+          pointer = pointer.add(const Duration(days: 1));
+          if (pointer.weekday == 1 && reminder.interval > 1) {
+            pointer = pointer.add(Duration(days: 7 * (reminder.interval - 1)));
+          }
+        }
+        else if (reminder.frequency == 'month') {
+          upcomingDates.add(pointer);
+          pointer = DateTime(pointer.year, pointer.month + reminder.interval, pointer.day, pointer.hour, pointer.minute);
+        }
+      }
+
+      for (int i = 0; i < upcomingDates.length; i++) {
+        await _notificationsPlugin.zonedSchedule(
+          _generateId(reminder.id, i), title, body,
+          tz.TZDateTime.from(upcomingDates[i], tz.local), platformDetails,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+          payload: reminder.examId,
+        );
+      }
+    }
+  }
+
+  static Future<void> cancelCustomReminder(String reminderId) async {
+    for (int i = 0; i < 20; i++) {
+      await _notificationsPlugin.cancel(_generateId(reminderId, i));
+    }
+  }
+
+  // ===========================================================================
+  // DEFAULT EXAM LIFECYCLE ALARMS (Restored!)
+  // ===========================================================================
+  static Future<void> scheduleExamReminders(ExamModel exam) async {
+    await cancelExamReminders(exam.id);
+    if (!exam.reminderEnabled || exam.status == ApplicationStatus.archived) return;
+
+    const AndroidNotificationDetails defaultDetails = AndroidNotificationDetails(
+      'govt_exam_reminders', 'Exam Reminders',
+      importance: Importance.max, priority: Priority.high, color: Color(0xFF1E3A8A),
+    );
+    const NotificationDetails platformDetails = NotificationDetails(android: defaultDetails);
+
+    final now = DateTime.now();
+
     if (exam.applicationEndDate != null && exam.status == ApplicationStatus.notApplied) {
       final deadline = exam.applicationEndDate!;
-      final reminderTime = DateTime(deadline.year, deadline.month, deadline.day, 10, 0); // 10:00 AM
-      final scheduledTime = reminderTime.subtract(const Duration(days: 2));
-
+      final scheduledTime = DateTime(deadline.year, deadline.month, deadline.day, 10, 0).subtract(const Duration(days: 2));
       if (scheduledTime.isAfter(now)) {
-        await _scheduleNotification(
-          id: _generateId(exam.id, 1),
-          title: 'Application Closing Soon!',
-          body: '${exam.examName} deadline is in 2 days. Apply now!',
-          scheduledTime: scheduledTime,
+        await _notificationsPlugin.zonedSchedule(
+          _generateId(exam.id, 101), 'Application Closing Soon!', '${exam.examName} deadline is in 2 days. Apply now!',
+          tz.TZDateTime.from(scheduledTime, tz.local), platformDetails,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+          payload: exam.id, // Deep link payload!
         );
       }
     }
 
-    // Prelims Exam Reminder (2 Days Before)
-    if (exam.examDate != null &&
-        (exam.status == ApplicationStatus.applied || exam.status == ApplicationStatus.admitCardOut)) {
-      final examDate = exam.examDate!;
-      final reminderTime = DateTime(examDate.year, examDate.month, examDate.day, 18, 0); // 6:00 PM
-      final scheduledTime = reminderTime.subtract(const Duration(days: 2));
-
+    if (exam.examDate != null && (exam.status == ApplicationStatus.applied || exam.status == ApplicationStatus.admitCardOut)) {
+      final scheduledTime = DateTime(exam.examDate!.year, exam.examDate!.month, exam.examDate!.day, 18, 0).subtract(const Duration(days: 2));
       if (scheduledTime.isAfter(now)) {
-        await _scheduleNotification(
-          id: _generateId(exam.id, 2),
-          title: 'Upcoming Exam!',
-          body: 'Your exam for ${exam.examName} is in 2 days. Keep revising!',
-          scheduledTime: scheduledTime,
+        await _notificationsPlugin.zonedSchedule(
+          _generateId(exam.id, 102), 'Upcoming Exam!', 'Your exam for ${exam.examName} is in 2 days. Keep revising!',
+          tz.TZDateTime.from(scheduledTime, tz.local), platformDetails,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+          payload: exam.id, // Deep link payload!
         );
       }
     }
   }
 
   static Future<void> cancelExamReminders(String examId) async {
-    await _notificationsPlugin.cancel(_generateId(examId, 1));
-    await _notificationsPlugin.cancel(_generateId(examId, 2));
-  }
-
-  static Future<void> _scheduleNotification({
-    required int id,
-    required String title,
-    required String body,
-    required DateTime scheduledTime,
-  }) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'govt_exam_reminders',
-      'Exam Reminders',
-      channelDescription: 'Notifications for upcoming exam deadlines and dates',
-      importance: Importance.max,
-      priority: Priority.high,
-      color: Color(0xFF1E3A8A), // App Theme Primary Color
-    );
-
-    const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
-
-    await _notificationsPlugin.zonedSchedule(
-      id,
-      title,
-      body,
-      tz.TZDateTime.from(scheduledTime, tz.local),
-      platformDetails,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-    );
+    await _notificationsPlugin.cancel(_generateId(examId, 101));
+    await _notificationsPlugin.cancel(_generateId(examId, 102));
   }
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import '../../data/models/exam_model.dart';
+import '../../data/models/reminder_model.dart';
 import 'google_auth_client.dart';
 
 class DriveSyncService {
@@ -26,7 +27,8 @@ class DriveSyncService {
     return fileList.files?.isNotEmpty == true ? fileList.files!.first.id : null;
   }
 
-  Future<bool> backupData(List<ExamModel> exams, Map<String, String?> aiSettings) async {
+  // ADDED: List<ReminderModel> reminders
+  Future<bool> backupData(List<ExamModel> exams, Map<String, String?> aiSettings, List<ReminderModel> reminders) async {
     try {
       final driveApi = await _getDriveApi();
       if (driveApi == null) return false;
@@ -36,6 +38,7 @@ class DriveSyncService {
       final Map<String, dynamic> payload = {
         'ai_settings': aiSettings,
         'exams': exams.map((e) => e.toMap()).toList(),
+        'reminders': reminders.map((r) => r.toMap()).toList(), // NEW
       };
 
       final String jsonData = jsonEncode(payload);
@@ -60,7 +63,7 @@ class DriveSyncService {
       if (driveApi == null) return null;
 
       final fileId = await _getBackupFileId(driveApi);
-      if (fileId == null) return {'exams': <ExamModel>[], 'ai_settings': null};
+      if (fileId == null) return {'exams': <ExamModel>[], 'ai_settings': null, 'reminders': <ReminderModel>[]};
 
       final response = await driveApi.files.get(fileId, downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
       final bytes = await response.stream.expand((x) => x).toList();
@@ -69,10 +72,8 @@ class DriveSyncService {
       final dynamic decoded = jsonDecode(jsonStr);
 
       if (decoded is List) {
-        return {'exams': decoded.map((e) => ExamModel.fromMap(e)).toList(), 'ai_settings': null};
+        return {'exams': decoded.map((e) => ExamModel.fromMap(e)).toList(), 'ai_settings': null, 'reminders': <ReminderModel>[]};
       } else if (decoded is Map<String, dynamic>) {
-
-        // Handle backward compatibility mapping
         Map<String, dynamic>? aiSettings = decoded['ai_settings'];
         if (aiSettings == null && decoded['api_key'] != null) {
           aiSettings = {'groq_key': decoded['api_key'], 'active_provider': 'groq'};
@@ -81,6 +82,8 @@ class DriveSyncService {
         return {
           'exams': (decoded['exams'] as List).map((e) => ExamModel.fromMap(e)).toList(),
           'ai_settings': aiSettings,
+          // NEW: Safely parse reminders if they exist in the backup
+          'reminders': (decoded['reminders'] as List?)?.map((r) => ReminderModel.fromMap(r)).toList() ?? [],
         };
       }
       return null;

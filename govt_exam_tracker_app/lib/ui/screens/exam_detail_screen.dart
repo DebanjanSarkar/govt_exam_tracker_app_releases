@@ -4,12 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../data/models/exam_model.dart';
+import '../../data/models/reminder_model.dart';
 import '../../core/utils/lifecycle_engine.dart';
 import '../../providers/exam_provider.dart';
+import '../../providers/reminder_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/ai_cooldown_provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_update_service.dart';
+import '../widgets/add_reminder_sheet.dart';
 import 'exam_form_screen.dart';
 import 'preparation_screen.dart';
 
@@ -68,19 +71,17 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
       return;
     }
 
-    // FIXED: Correctly loads either Groq or Gemini key based on settings
     final prefs = ref.read(sharedPreferencesProvider);
     final provider = prefs.getString(AppConstants.prefsActiveAiProvider) ?? 'groq';
     final userKey = prefs.getString(provider == 'gemini' ? AppConstants.prefsGeminiApiKey : AppConstants.prefsGroqApiKey);
 
     if (userKey == null || userKey.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your Groq or Gemini API Key in settings first!'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add your API Key in settings first!'), backgroundColor: Colors.red));
       return;
     }
 
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Searching the web...')])))));
 
-    // Passed provider argument to LiveUpdateService
     final result = await LiveUpdateService.getLiveStatus(exam.examName, phaseTitle, userKey, provider);
     ref.read(aiCooldownProvider.notifier).startGlobalCooldown();
 
@@ -200,9 +201,7 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
   }
 
   Widget _buildPreparationHub(ExamModel exam) {
-    int totalTopics = 0;
-    int completedTopics = 0;
-
+    int totalTopics = 0; int completedTopics = 0;
     exam.syllabusData.forEach((stage, subjects) {
       if (subjects is Map) {
         subjects.forEach((subject, topicsList) {
@@ -230,8 +229,7 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.menu_book, color: Colors.purple, size: 28),
-                const SizedBox(width: 12),
+                const Icon(Icons.menu_book, color: Colors.purple, size: 28), const SizedBox(width: 12),
                 const Expanded(child: Text('Preparation Hub', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
                 if (hasData) Text('${(progress * 100).toInt()}%', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.purple, fontSize: 16)),
               ],
@@ -259,6 +257,133 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
     );
   }
 
+  // =========================================================================
+  // HUMAN READABLE TRANSLATOR ENGINE
+  // Translates complex Cron math into beautiful sentences!
+  // =========================================================================
+  String _getHumanReadableRecurrence(ReminderModel r) {
+    if (r.repeatType == 'none') return 'Once';
+
+    String freqText = r.frequency == 'day' ? 'days' : r.frequency == 'week' ? 'weeks' : 'months';
+    String text = r.interval == 1
+        ? 'Every ${r.frequency}'
+        : 'Every ${r.interval} $freqText';
+
+    if (r.frequency == 'week' && r.weekdays.isNotEmpty) {
+      final days = r.weekdays.map((d) => ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d-1]).join(', ');
+      text += ' on $days';
+    }
+
+    if (r.endType == 'date' && r.endDate != null) {
+      text += '\nEnds ${DateFormat('dd MMM yyyy').format(r.endDate!)}';
+    } else if (r.endType == 'phase' && r.endPhase != null) {
+      text += '\nEnds after ${r.endPhase!.toUpperCase()}';
+    }
+
+    return text;
+  }
+
+  // ==========================================
+  // THE REMINDERS TAB UI
+  // ==========================================
+  Widget _buildRemindersTab(ExamModel currentExam) {
+    final reminders = ref.watch(examRemindersProvider(currentExam.id));
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: reminders.isEmpty
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.alarm_off, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            const Text('No alarms set for this exam.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+          ],
+        ),
+      )
+          : ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: reminders.length,
+        itemBuilder: (context, index) {
+          final r = reminders[index];
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            elevation: 0,
+            color: theme.colorScheme.surface,
+            shape: RoundedRectangleBorder(side: BorderSide(color: theme.colorScheme.outlineVariant), borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              title: Text(r.title, style: TextStyle(fontWeight: FontWeight.bold, decoration: r.isActive ? null : TextDecoration.lineThrough, color: r.isActive ? theme.colorScheme.onSurface : Colors.grey)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (r.description != null && r.description!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6.0, top: 4.0),
+                      child: Text(r.description!),
+                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.access_time, size: 14, color: Colors.purple.shade300),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                            '${DateFormat.jm().format(r.time)} • ${_getHumanReadableRecurrence(r)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.purple, fontSize: 12)
+                        ),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // THE EDIT BUTTON!
+                  IconButton(
+                    icon: const Icon(Icons.edit_note, color: Colors.grey),
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent, // Prevents white corners
+                        builder: (context) => AddReminderSheet(exam: currentExam, reminderToEdit: r),
+                      );
+                    },
+                  ),
+                  Switch(
+                    value: r.isActive,
+                    activeColor: Colors.purple,
+                    onChanged: (val) => ref.read(reminderListProvider.notifier).toggleReminderState(r),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'add_alarm_fab',
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent, // Prevents white corners
+            builder: (context) => AddReminderSheet(exam: currentExam),
+          );
+        },
+        icon: const Icon(Icons.add_alarm),
+        label: const Text('Add Alarm'),
+        backgroundColor: Colors.purple,
+        foregroundColor: Colors.white,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final examsState = ref.watch(examListProvider);
@@ -267,110 +392,134 @@ class _ExamDetailScreenState extends ConsumerState<ExamDetailScreen> {
     final theme = Theme.of(context);
     final badge = LifecycleEngine.getBadge(currentExam);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Exam Details', style: TextStyle(fontSize: 18)),
-        actions: [
-          IconButton(icon: const Icon(Icons.edit), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ExamFormScreen(examToEdit: currentExam)))),
-          IconButton(icon: const Icon(Icons.delete_outline), onPressed: _deleteExam),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(currentExam.examName, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-          if (currentExam.advertisementNo != null && currentExam.advertisementNo!.isNotEmpty)
-            Padding(padding: const EdgeInsets.only(top: 4.0, bottom: 8.0), child: Text(currentExam.advertisementNo!, style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.bold))),
+    final overviewTab = ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(currentExam.examName, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+        if (currentExam.advertisementNo != null && currentExam.advertisementNo!.isNotEmpty)
+          Padding(padding: const EdgeInsets.only(top: 4.0, bottom: 8.0), child: Text(currentExam.advertisementNo!, style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.bold))),
 
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8.0, runSpacing: 8.0,
-              children: [
-                Chip(avatar: Icon(badge.icon, size: 16, color: badge.color), label: Text(badge.text, style: TextStyle(color: badge.color, fontWeight: FontWeight.bold)), backgroundColor: badge.color.withOpacity(0.1), side: BorderSide(color: badge.color.withOpacity(0.5))),
-                if (currentExam.portalUrl != null && currentExam.portalUrl!.isNotEmpty)
-                  FilledButton.icon(onPressed: () => _launchUrl(currentExam.portalUrl!), icon: const Icon(Icons.open_in_browser, size: 18), label: const Text('Portal')),
-              ],
-            ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8.0, runSpacing: 8.0,
+            children: [
+              Chip(avatar: Icon(badge.icon, size: 16, color: badge.color), label: Text(badge.text, style: TextStyle(color: badge.color, fontWeight: FontWeight.bold)), backgroundColor: badge.color.withOpacity(0.1), side: BorderSide(color: badge.color.withOpacity(0.5))),
+              if (currentExam.portalUrl != null && currentExam.portalUrl!.isNotEmpty)
+                FilledButton.icon(onPressed: () => _launchUrl(currentExam.portalUrl!), icon: const Icon(Icons.open_in_browser, size: 18), label: const Text('Portal')),
+            ],
           ),
+        ),
 
-          const Divider(height: 32),
+        const Divider(height: 32),
 
-          const Text('Timeline', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
-          const SizedBox(height: 8),
-          Card(
-            margin: EdgeInsets.zero,
+        const Text('Timeline', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
+        const SizedBox(height: 8),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Column(
+            children: [
+              ListTile(leading: const Icon(Icons.app_registration), title: const Text('Application Deadline'), subtitle: Text(_formatDate(currentExam.applicationEndDate))),
+              ListTile(leading: const Icon(Icons.event), title: const Text('Prelims Exam Date'), subtitle: Text(_formatDate(currentExam.examDate))),
+              if (currentExam.mainsExamDate != null) ListTile(leading: const Icon(Icons.event_available), title: const Text('Mains Exam Date'), subtitle: Text(_formatDate(currentExam.mainsExamDate))),
+              if (currentExam.resultDate != null) ListTile(leading: const Icon(Icons.emoji_events), title: const Text('Result Date'), subtitle: Text(_formatDate(currentExam.resultDate))),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        const Text('Journey Tracker', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
+        const SizedBox(height: 16),
+
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Column(children: [const Icon(Icons.app_registration, color: Colors.blue, size: 24), Expanded(child: Container(width: 2, color: Colors.grey.shade300))]),
+              const SizedBox(width: 16),
+              Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 24.0), child: Card(elevation: 0, color: Colors.blue.withOpacity(0.1), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Application Window', style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text('${_formatDate(currentExam.applicationStartDate)} to ${_formatDate(currentExam.applicationEndDate)}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13))]))))),
+            ],
+          ),
+        ),
+
+        _buildDynamicStepper(currentExam),
+
+        const Divider(height: 32),
+        const Text('Credentials Vault', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
+        const SizedBox(height: 8),
+        Card(
+          margin: EdgeInsets.zero,
+          color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                ListTile(leading: const Icon(Icons.app_registration), title: const Text('Application Deadline'), subtitle: Text(_formatDate(currentExam.applicationEndDate))),
-                ListTile(leading: const Icon(Icons.event), title: const Text('Prelims Exam Date'), subtitle: Text(_formatDate(currentExam.examDate))),
-                if (currentExam.mainsExamDate != null) ListTile(leading: const Icon(Icons.event_available), title: const Text('Mains Exam Date'), subtitle: Text(_formatDate(currentExam.mainsExamDate))),
-                if (currentExam.resultDate != null) ListTile(leading: const Icon(Icons.emoji_events), title: const Text('Result Date'), subtitle: Text(_formatDate(currentExam.resultDate))),
+                Row(
+                  children: [
+                    const Icon(Icons.person), const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(currentExam.usernameType ?? 'Username / ID', style: const TextStyle(fontSize: 12, color: Colors.grey)), Text(currentExam.username?.isNotEmpty == true ? currentExam.username! : 'Not set', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))])),
+                    if (currentExam.username?.isNotEmpty == true) IconButton(icon: const Icon(Icons.copy), onPressed: () => _copyToClipboard(currentExam.username!, 'Username')),
+                  ],
+                ),
+                const Divider(height: 24),
+                Row(
+                  children: [
+                    const Icon(Icons.lock), const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Password', style: TextStyle(fontSize: 12, color: Colors.grey)), Text(currentExam.password?.isNotEmpty == true ? (_obscurePassword ? '••••••••' : currentExam.password!) : 'Not set', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))])),
+                    if (currentExam.password?.isNotEmpty == true) ...[
+                      IconButton(icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off), onPressed: () => setState(() => _obscurePassword = !_obscurePassword)),
+                      IconButton(icon: const Icon(Icons.copy), onPressed: () => _copyToClipboard(currentExam.password!, 'Password')),
+                    ]
+                  ],
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+        ),
 
-          const Text('Journey Tracker', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
-          const SizedBox(height: 16),
-
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Column(children: [const Icon(Icons.app_registration, color: Colors.blue, size: 24), Expanded(child: Container(width: 2, color: Colors.grey.shade300))]),
-                const SizedBox(width: 16),
-                Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 24.0), child: Card(elevation: 0, color: Colors.blue.withOpacity(0.1), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Application Window', style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text('${_formatDate(currentExam.applicationStartDate)} to ${_formatDate(currentExam.applicationEndDate)}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13))]))))),
-              ],
-            ),
-          ),
-
-          _buildDynamicStepper(currentExam),
-
-          const Divider(height: 32),
-          const Text('Credentials Vault', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
-          const SizedBox(height: 8),
-          Card(
-            margin: EdgeInsets.zero,
-            color: theme.colorScheme.primaryContainer.withOpacity(0.3),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.person), const SizedBox(width: 12),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(currentExam.usernameType ?? 'Username / ID', style: const TextStyle(fontSize: 12, color: Colors.grey)), Text(currentExam.username?.isNotEmpty == true ? currentExam.username! : 'Not set', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))])),
-                      if (currentExam.username?.isNotEmpty == true) IconButton(icon: const Icon(Icons.copy), onPressed: () => _copyToClipboard(currentExam.username!, 'Username')),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  Row(
-                    children: [
-                      const Icon(Icons.lock), const SizedBox(width: 12),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Password', style: TextStyle(fontSize: 12, color: Colors.grey)), Text(currentExam.password?.isNotEmpty == true ? (_obscurePassword ? '••••••••' : currentExam.password!) : 'Not set', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))])),
-                      if (currentExam.password?.isNotEmpty == true) ...[
-                        IconButton(icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off), onPressed: () => setState(() => _obscurePassword = !_obscurePassword)),
-                        IconButton(icon: const Icon(Icons.copy), onPressed: () => _copyToClipboard(currentExam.password!, 'Password')),
-                      ]
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-          if (currentExam.notes != null && currentExam.notes!.isNotEmpty) ...[
-            const Text('Notes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)), const SizedBox(height: 8),
-            Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Text(currentExam.notes!)), const SizedBox(height: 24),
-          ],
-
-          const Divider(height: 16),
-          _buildPreparationHub(currentExam),
-          const SizedBox(height: 40),
+        const SizedBox(height: 24),
+        if (currentExam.notes != null && currentExam.notes!.isNotEmpty) ...[
+          const Text('Notes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)), const SizedBox(height: 8),
+          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Text(currentExam.notes!)), const SizedBox(height: 24),
         ],
+        if (currentExam.additionalInfo != null && currentExam.additionalInfo!.isNotEmpty) ...[
+          const Text('Additional Info', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)), const SizedBox(height: 8),
+          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Text(currentExam.additionalInfo!)), const SizedBox(height: 24),
+        ],
+
+        const Divider(height: 16),
+        _buildPreparationHub(currentExam),
+        const SizedBox(height: 40),
+      ],
+    );
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Exam Details', style: TextStyle(fontSize: 18)),
+          bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white60,
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            tabs: [
+              Tab(text: 'OVERVIEW'),
+              Tab(text: 'REMINDERS'),
+            ],
+          ),
+          actions: [
+            IconButton(icon: const Icon(Icons.edit), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ExamFormScreen(examToEdit: currentExam)))),
+            IconButton(icon: const Icon(Icons.delete_outline), onPressed: _deleteExam),
+          ],
+        ),
+        body: TabBarView(
+          children: [
+            overviewTab,
+            _buildRemindersTab(currentExam),
+          ],
+        ),
       ),
     );
   }

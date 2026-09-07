@@ -1,10 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/database/database_helper.dart'; // Needed for direct DB access
 import '../core/services/drive_sync_service.dart';
 import '../data/models/exam_model.dart';
+import '../data/models/reminder_model.dart';
 import '../core/constants/app_constants.dart';
 import 'exam_provider.dart';
+import 'reminder_provider.dart'; // NEW
 import 'ai_cooldown_provider.dart';
 
 final driveSyncServiceProvider = Provider((ref) => DriveSyncService());
@@ -62,6 +65,11 @@ class SyncNotifier extends StateNotifier<SyncState> {
     final repository = _ref.read(examRepositoryProvider);
     final localExams = await repository.getAllExams();
 
+    // Fetch local reminders directly from DB
+    final db = await DatabaseHelper.instance.database;
+    final rMaps = await db.query(DatabaseHelper.tableReminders);
+    final localReminders = rMaps.map((m) => ReminderModel.fromMap(m)).toList();
+
     final prefs = _ref.read(sharedPreferencesProvider);
     final aiSettings = {
       'gemini_key': prefs.getString(AppConstants.prefsGeminiApiKey),
@@ -69,7 +77,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
       'active_provider': prefs.getString(AppConstants.prefsActiveAiProvider) ?? 'groq',
     };
 
-    final success = await _syncService.backupData(localExams, aiSettings);
+    final success = await _syncService.backupData(localExams, aiSettings, localReminders);
 
     if (success) state = state.copyWith(isLoading: false, lastSyncMessage: 'Backup successful');
     else state = state.copyWith(isLoading: false, error: 'Backup failed');
@@ -87,11 +95,9 @@ class SyncNotifier extends StateNotifier<SyncState> {
     // SYNC AI SETTINGS
     final remoteAiSettings = remoteData['ai_settings'] as Map<String, dynamic>?;
     final prefs = _ref.read(sharedPreferencesProvider);
-
     if (remoteAiSettings != null) {
       final localGemini = prefs.getString(AppConstants.prefsGeminiApiKey);
       final localGroq = prefs.getString(AppConstants.prefsGroqApiKey);
-
       if ((localGemini == null || localGemini.isEmpty) && remoteAiSettings['gemini_key'] != null) {
         await prefs.setString(AppConstants.prefsGeminiApiKey, remoteAiSettings['gemini_key']);
       }
@@ -103,31 +109,47 @@ class SyncNotifier extends StateNotifier<SyncState> {
       }
     }
 
+    // SYNC EXAMS
     final remoteExams = remoteData['exams'] as List<ExamModel>;
-    if (remoteExams.isEmpty) {
-      state = state.copyWith(isLoading: false, lastSyncMessage: 'No backup found');
-      return;
-    }
+    if (remoteExams.isNotEmpty) {
+      final repository = _ref.read(examRepositoryProvider);
+      final localExams = await repository.getAllExams();
+      final localMap = {for (var e in localExams) e.id: e};
 
-    final repository = _ref.read(examRepositoryProvider);
-    final localExams = await repository.getAllExams();
-    final localMap = {for (var e in localExams) e.id: e};
-
-    List<ExamModel> toUpdate = [];
-    for (var remote in remoteExams) {
-      final local = localMap[remote.id];
-      if (local == null || remote.updatedAt.isAfter(local.updatedAt)) {
-        toUpdate.add(remote);
+      List<ExamModel> toUpdate = [];
+      for (var remote in remoteExams) {
+        final local = localMap[remote.id];
+        if (local == null || remote.updatedAt.isAfter(local.updatedAt)) {
+          toUpdate.add(remote);
+        }
+      }
+      if (toUpdate.isNotEmpty) {
+        await repository.bulkSyncInsert(toUpdate);
+        await _ref.read(examListProvider.notifier).loadExams();
       }
     }
 
-    if (toUpdate.isNotEmpty) {
-      await repository.bulkSyncInsert(toUpdate);
-      await _ref.read(examListProvider.notifier).loadExams();
-      state = state.copyWith(isLoading: false, lastSyncMessage: 'Synced ${toUpdate.length} records');
-    } else {
-      state = state.copyWith(isLoading: false, lastSyncMessage: 'Already up to date');
+    // SYNC REMINDERS
+    final remoteReminders = remoteData['reminders'] as List<ReminderModel>;
+    if (remoteReminders.isNotEmpty) {
+      final db = await DatabaseHelper.instance.database;
+      final rMaps = await db.query(DatabaseHelper.tableReminders);
+      final localReminders = rMaps.map((m) => ReminderModel.fromMap(m)).toList();
+      final localRMap = {for (var r in localReminders) r.id: r};
+
+      List<ReminderModel> toUpdateR = [];
+      for (var remote in remoteReminders) {
+        final local = localRMap[remote.id];
+        if (local == null || remote.createdAt.isAfter(local.createdAt)) {
+          toUpdateR.add(remote);
+        }
+      }
+      if (toUpdateR.isNotEmpty) {
+        await _ref.read(reminderListProvider.notifier).bulkSyncInsert(toUpdateR);
+      }
     }
+
+    state = state.copyWith(isLoading: false, lastSyncMessage: 'Sync Complete');
   }
 }
 

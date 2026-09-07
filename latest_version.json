@@ -1,6 +1,6 @@
 {
-  "version": "4.0.0",
-  "build_number": 6,
+  "version": "5.0.0",
+  "build_number": 7,
   "url": "https://github.com/DebanjanSarkar/govt_exam_tracker_app_releases/releases/latest",
-  "release_notes": "Light Mode, Dark Mode, and match system mode settings are added - for lesser strain on eyes and comfortable viewing!"
+  "release_notes": "Added advanced customised alerts and reminders feature - users can now add routine plans and set up alerts and reminders exam-wise - helping them to stick to preparation routines!"
 }

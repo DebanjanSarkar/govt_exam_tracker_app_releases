@@ -19,11 +19,12 @@ android {
 
     defaultConfig {
         applicationId = "com.debanjan_sarkar.govt_exam_tracker_app"
-        minSdk = flutter.minSdkVersion
+        // FIXED: Bumped minSdk to 26 to support Apache POI MethodHandles
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        multiDexEnabled = true // PREVENTS CRASHES ON NEW PHONES WITH LARGE APPS
+        multiDexEnabled = true
     }
 
     val keystorePropertiesFile = rootProject.file("key.properties")
@@ -44,7 +45,7 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = false // EXPLICITLY DISABLED TO PREVENT R8 CORRUPTION
+            isMinifyEnabled = false
             isShrinkResources = false
         }
     }
@@ -62,6 +63,10 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
+    // NATIVE EXCEL GENERATION (APACHE POI)
+    implementation("org.apache.poi:poi-ooxml:5.2.3")
+    implementation("com.fasterxml:aalto-xml:1.3.2")
 }
 
 rootProject.subprojects {

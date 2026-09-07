@@ -1,7 +1,7 @@
 name: govt_exam_tracker_app
 description: "A local-first, smart tracker for Indian Government Exams."
 publish_to: 'none'
-version: 2.1.0+4
+version: 3.0.0+5
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -49,9 +49,9 @@ dependencies:
   # For checking package version number
   package_info_plus: ^8.0.2
 
-  # Excel Generation & File Sharing
-  excel: ^4.0.3
+  # EXPORT PACKAGES
   share_plus: ^9.0.0
+  cross_file: ^0.3.4
 
 
 dev_dependencies:

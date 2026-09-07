@@ -1,6 +1,6 @@
 {
-  "version": "2.1.0",
-  "build_number": 4,
+  "version": "3.0.0",
+  "build_number": 5,
   "url": "https://github.com/DebanjanSarkar/govt_exam_tracker_app_releases/releases/latest",
-  "release_notes": "The App now supports dual engine - powered by Groq's Qwen and Cerebras - user gets more AI generation limits and power within the app now!"
+  "release_notes": "The App now packs inbuilt Kotlin service for beautiful excel export - users can export their entire data as excel, and keep it as backup, or use it for excel tracking."
 }

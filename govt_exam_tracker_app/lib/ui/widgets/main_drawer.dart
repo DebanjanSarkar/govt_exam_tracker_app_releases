@@ -5,6 +5,7 @@ import '../../providers/sync_provider.dart';
 import '../screens/settings_screen.dart';
 import '../screens/export_screen.dart';
 import '../screens/reminders_screen.dart';
+import '../screens/guide_screen.dart'; // NEW IMPORT
 
 class MainDrawer extends ConsumerWidget {
   const MainDrawer({super.key});
@@ -51,7 +52,6 @@ class MainDrawer extends ConsumerWidget {
         child: Column(
           children: [
             Expanded(
-              // Added an explicit Scrollbar for standard UX
               child: Scrollbar(
                 thumbVisibility: true,
                 thickness: 6.0,
@@ -102,6 +102,16 @@ class MainDrawer extends ConsumerWidget {
 
                     const Divider(),
 
+                    // NEW: HOW TO USE / GUIDE SECTION
+                    ListTile(
+                      leading: const Icon(Icons.help_outline, color: Colors.lightBlue),
+                      title: const Text('How to Use'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const GuideScreen()));
+                      },
+                    ),
+
                     ListTile(
                       leading: const Icon(Icons.alarm, color: Colors.orange),
                       title: const Text('Master Alarm Hub'),
@@ -142,7 +152,6 @@ class MainDrawer extends ConsumerWidget {
               ),
             ),
 
-            // NEW: VISUAL SCROLL HINT (Only visible if they haven't scrolled, guides the eye downward)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.only(top: 8, bottom: 4),
@@ -164,7 +173,6 @@ class MainDrawer extends ConsumerWidget {
               ),
             ),
 
-            // BRANDING SECTION
             Container(
               width: double.infinity,
               padding: const EdgeInsets.only(top: 8.0, bottom: 24.0, left: 16.0, right: 16.0),

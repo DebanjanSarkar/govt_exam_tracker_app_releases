@@ -1,6 +1,6 @@
 {
-  "version": "5.0.0",
-  "build_number": 7,
+  "version": "5.1.0",
+  "build_number": 8,
   "url": "https://github.com/DebanjanSarkar/govt_exam_tracker_app_releases/releases/latest",
-  "release_notes": "Added advanced customised alerts and reminders feature - users can now add routine plans and set up alerts and reminders exam-wise - helping them to stick to preparation routines!"
+  "release_notes": "Enhanced the alarm feature of the app - the app now has its own alarm tune, and added option of high priority alarms that beeps even when the screen is off i.e. in standby mode."
 }
